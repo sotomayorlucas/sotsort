@@ -32,7 +32,7 @@ make main && ./run_sot.sh && python3 parse.py
 ## Setup of this run
 
 One 2-vCPU cloud VM (Xeon, see `results/*/lscpu`), gcc 13.3, pinned to one core,
-maxn = 10^6 (n uniform in [0.9·10^6, 10^6]), 10 iterations per cell, their six
+maxn = 10^6 (n uniform in [0.9·10^6, 10^6]; per-element counts divided by 950 000), 10 iterations per cell, their six
 presortedness levels S (average run length) and four types. The paper uses n ≈ 10^7,
 100 iterations and an i7-4770, so absolute numbers are not comparable with the paper.
 The relative order of their own algorithms agrees with their published `average-time.txt`

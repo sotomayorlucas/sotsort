@@ -514,7 +514,30 @@ private:
             std::move(buf_, buf_ + d, A);
             return;
         }
+#ifndef SOT_JUGGLE_BYTES
+#define SOT_JUGGLE_BYTES 64
+#endif
+        // Elementos grandes: rotación por ciclos (n + gcd movimientos, uno por elemento) en vez de
+        // la triple reversión (~1,25-1,5 por elemento). Con elementos de una línea de caché o más,
+        // el acceso con salto no cuesta mucho más que el secuencial y los movimientos dominan.
+        if constexpr (sizeof(T) >= SOT_JUGGLE_BYTES) { juggle_rotate(a_ + l, nl, nl + nr); return; }
         fused_reversal_rotate(a_ + l, a_ + m, a_ + r);
+    }
+
+    // Rotación por ciclos: deja p[k..n) delante de p[0..k). Cada elemento se mueve una vez.
+    static void juggle_rotate(T* p, std::size_t k, std::size_t n) {
+        std::size_t g = n, b = k;
+        while (b) { std::size_t t = g % b; g = b; b = t; }      // gcd(n, k)
+        for (std::size_t i = 0; i < g; ++i) {
+            T tmp = std::move(p[i]);
+            std::size_t j = i;
+            for (;;) {
+                std::size_t nx = j + k; if (nx >= n) nx -= n;
+                if (nx == i) break;
+                p[j] = std::move(p[nx]); j = nx;
+            }
+            p[j] = std::move(tmp);
+        }
     }
 
     // Triple reversión fusionada (idea: trinity rotation de scandum).
