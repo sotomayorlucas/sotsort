@@ -254,6 +254,9 @@ public:
 #ifndef SOT_B0_BYTES
 #define SOT_B0_BYTES 16384
 #endif
+#ifndef SOT_MERGE_BYTES
+#define SOT_MERGE_BYTES 64
+#endif
 #ifndef SOT_LEAF
 #define SOT_LEAF 128
 #endif
@@ -390,6 +393,11 @@ private:
     // Pocos giros (cambios entre tramo ascendente y descendente): runs largos.
     // g solo crece, así que se puede cortar apenas llega a n/8.
     bool few_turns(std::size_t n) {
+        // v8-r4: con elementos grandes (64 bytes o más) mover cuesta más que comparar, y si el
+        // buffer alcanza para la mezcla por páginas, las mezclas (~1,5 movimientos por elemento y
+        // nivel) le ganan al quicksort (dos escrituras por elemento y nivel, más rotaciones),
+        // también con entrada aleatoria. Medido en una sola máquina; SOT_MERGE_BYTES=0 lo apaga.
+        if constexpr (SOT_MERGE_BYTES > 0 && sizeof(T) >= SOT_MERGE_BYTES) { if (page_ok(n)) return true; }
 #ifndef SOT_EXACT_TURNS
         // v8-r3: con n grande, la densidad de giros se estima con 64 ventanas de 256 pares
         // (desplazamiento aleatorio). Contarlos todos costaba una comparación por elemento,
@@ -514,30 +522,7 @@ private:
             std::move(buf_, buf_ + d, A);
             return;
         }
-#ifndef SOT_JUGGLE_BYTES
-#define SOT_JUGGLE_BYTES 64
-#endif
-        // Elementos grandes: rotación por ciclos (n + gcd movimientos, uno por elemento) en vez de
-        // la triple reversión (~1,25-1,5 por elemento). Con elementos de una línea de caché o más,
-        // el acceso con salto no cuesta mucho más que el secuencial y los movimientos dominan.
-        if constexpr (sizeof(T) >= SOT_JUGGLE_BYTES) { juggle_rotate(a_ + l, nl, nl + nr); return; }
         fused_reversal_rotate(a_ + l, a_ + m, a_ + r);
-    }
-
-    // Rotación por ciclos: deja p[k..n) delante de p[0..k). Cada elemento se mueve una vez.
-    static void juggle_rotate(T* p, std::size_t k, std::size_t n) {
-        std::size_t g = n, b = k;
-        while (b) { std::size_t t = g % b; g = b; b = t; }      // gcd(n, k)
-        for (std::size_t i = 0; i < g; ++i) {
-            T tmp = std::move(p[i]);
-            std::size_t j = i;
-            for (;;) {
-                std::size_t nx = j + k; if (nx >= n) nx -= n;
-                if (nx == i) break;
-                p[j] = std::move(p[nx]); j = nx;
-            }
-            p[j] = std::move(tmp);
-        }
     }
 
     // ------------------------------------------------- mezcla por páginas (v8-r4)
