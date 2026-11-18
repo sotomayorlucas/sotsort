@@ -1,0 +1,30 @@
+u64   rand      10000000 sec=  287.5 par=  190.1 ooo=  182.1 ooo+raiz=  178.9 | ooo/par=0.96 ooo+raiz/par=0.94 acel=1.61 [ooo tareas=244 ocio=0.3ms raiz=18.4ms] ok
+u64   dup16     10000000 sec=   90.2 par=   79.1 ooo=   79.3 ooo+raiz=   70.4 | ooo/par=1.00 ooo+raiz/par=0.89 acel=1.28 [ooo tareas=13 ocio=5.4ms raiz=19.5ms] ok
+u64   sqrtn     10000000 sec=  169.8 par=  114.1 ooo=  123.6 ooo+raiz=  117.4 | ooo/par=1.08 ooo+raiz/par=1.03 acel=1.45 [ooo tareas=249 ocio=0.1ms raiz=20.0ms] ok
+u64   pesado    10000000 sec=  187.0 par=  143.5 ooo=  150.4 ooo+raiz=  119.5 | ooo/par=1.05 ooo+raiz/par=0.83 acel=1.57 [ooo tareas=129 ocio=0.2ms raiz=16.0ms] ok
+u64   mitades   10000000 sec=  181.5 par=  166.8 ooo=  131.2 ooo+raiz=  128.3 | ooo/par=0.79 ooo+raiz/par=0.77 acel=1.42 [ooo tareas=128 ocio=0.1ms raiz=20.4ms] ok
+u64   asc1pct   10000000 sec=  205.0 par=  145.5 ooo=  153.7 ooo+raiz=  140.5 | ooo/par=1.06 ooo+raiz/par=0.97 acel=1.46 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+u64   organ     10000000 sec=   95.9 par=   63.7 ooo=   74.8 ooo+raiz=   75.4 | ooo/par=1.17 ooo+raiz/par=1.18 acel=1.27 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+u64   asc       10000000 sec=   14.5 par=   14.7 ooo=   14.0 ooo+raiz=   14.5 | ooo/par=0.95 ooo+raiz/par=0.98 acel=1.00 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+u64   desc      10000000 sec=   22.9 par=   23.8 ooo=   22.0 ooo+raiz=   23.3 | ooo/par=0.92 ooo+raiz/par=0.98 acel=0.98 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+pico de RSS del proceso: 425 MB
+r128  rand       1000000 sec=  284.5 par=  173.1 ooo=  210.4 ooo+raiz=  194.9 | ooo/par=1.22 ooo+raiz/par=1.13 acel=1.46 [ooo tareas=24 ocio=3.2ms raiz=31.2ms] ok
+r128  dup16      1000000 sec=  131.7 par=   98.3 ooo=  111.8 ooo+raiz=  106.5 | ooo/par=1.14 ooo+raiz/par=1.08 acel=1.24 [ooo tareas=13 ocio=6.0ms raiz=29.5ms] ok
+r128  sqrtn      1000000 sec=  200.9 par=  128.4 ooo=  155.4 ooo+raiz=  136.0 | ooo/par=1.21 ooo+raiz/par=1.06 acel=1.48 [ooo tareas=25 ocio=1.6ms raiz=27.1ms] ok
+r128  pesado     1000000 sec=  195.0 par=  129.5 ooo=  131.8 ooo+raiz=  115.2 | ooo/par=1.02 ooo+raiz/par=0.89 acel=1.69 [ooo tareas=10 ocio=1.2ms raiz=24.5ms] ok
+r128  mitades    1000000 sec=  183.2 par=  141.6 ooo=  158.4 ooo+raiz=  147.7 | ooo/par=1.12 ooo+raiz/par=1.04 acel=1.24 [ooo tareas=19 ocio=2.9ms raiz=31.0ms] ok
+r128  asc1pct    1000000 sec=  163.4 par=  104.6 ooo=  106.9 ooo+raiz=  109.4 | ooo/par=1.02 ooo+raiz/par=1.05 acel=1.49 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+r128  organ      1000000 sec=   92.5 par=   53.0 ooo=   53.7 ooo+raiz=   58.2 | ooo/par=1.01 ooo+raiz/par=1.10 acel=1.59 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+r128  asc        1000000 sec=    8.8 par=    8.8 ooo=    8.7 ooo+raiz=    8.7 | ooo/par=0.98 ooo+raiz/par=0.99 acel=1.01 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+r128  desc       1000000 sec=   21.0 par=   21.0 ooo=   21.1 ooo+raiz=   21.3 | ooo/par=1.00 ooo+raiz/par=1.01 acel=0.99 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+pico de RSS del proceso: 563 MB
+str   rand       1000000 sec=  533.2 par=  297.9 ooo=  283.1 ooo+raiz=  275.8 | ooo/par=0.95 ooo+raiz/par=0.93 acel=1.93 [ooo tareas=25 ocio=11.1ms raiz=14.1ms] ok
+str   dup16      1000000 sec=  142.9 par=   83.1 ooo=  100.2 ooo+raiz=   91.2 | ooo/par=1.21 ooo+raiz/par=1.10 acel=1.57 [ooo tareas=14 ocio=4.9ms raiz=16.0ms] ok
+str   sqrtn      1000000 sec=  295.6 par=  173.1 ooo=  167.3 ooo+raiz=  180.4 | ooo/par=0.97 ooo+raiz/par=1.04 acel=1.64 [ooo tareas=25 ocio=6.0ms raiz=11.9ms] ok
+str   pesado     1000000 sec=  278.2 par=  169.2 ooo=  158.5 ooo+raiz=  151.0 | ooo/par=0.94 ooo+raiz/par=0.89 acel=1.84 [ooo tareas=12 ocio=7.5ms raiz=12.5ms] ok
+str   mitades    1000000 sec=  314.7 par=  263.9 ooo=  182.0 ooo+raiz=  170.5 | ooo/par=0.69 ooo+raiz/par=0.65 acel=1.85 [ooo tareas=17 ocio=4.0ms raiz=12.4ms] ok
+str   asc1pct    1000000 sec=  106.5 par=   64.5 ooo=   70.1 ooo+raiz=   68.9 | ooo/par=1.09 ooo+raiz/par=1.07 acel=1.55 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+str   organ      1000000 sec=   58.5 par=   41.2 ooo=   49.6 ooo+raiz=   45.8 | ooo/par=1.20 ooo+raiz/par=1.11 acel=1.28 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+str   asc        1000000 sec=   46.5 par=   41.0 ooo=   47.0 ooo+raiz=   46.7 | ooo/par=1.15 ooo+raiz/par=1.14 acel=0.99 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+str   desc       1000000 sec=   57.4 par=   48.6 ooo=   54.8 ooo+raiz=   54.6 | ooo/par=1.13 ooo+raiz/par=1.12 acel=1.05 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+pico de RSS del proceso: 304 MB

@@ -1,0 +1,87 @@
+# SotSort
+
+A stable sort for C++17, header-only. One algorithm, two memory regimes:
+
+- `sot::stable_sort(a, n, cmp)` — O(1) extra memory: a ~16 KB buffer on the stack, no heap, no recursion.
+- `sot::stable_sort_fast(a, n, cmp, opts)` — uses whatever memory is available (up to an n-element
+  buffer), with galloping merges, a counting shortcut for small-range integers, and threads.
+- `sot::stable_sort_by_key(a, n, key, opts)` — stable sort by an integer key.
+
+The core is a stable quicksort: blocks are partitioned through the buffer and gathered with
+rotations; leaves are sorted with parity merges; inputs with long runs go to a natural merge sort.
+Integer keys with `std::less` use an AVX-512 (compress) or AVX2 (table) block partition.
+
+```cpp
+#include "sotsort.hpp"
+std::vector<Record> v = ...;
+sot::stable_sort(v.data(), v.size(), [](const Record& a, const Record& b) { return a.key < b.key; });
+```
+
+## Status — read this first
+
+**This is version 8-r, a reconstruction.** The original v8 source was lost; `include/sotsort.hpp`
+was rewritten from the pseudocode, the proofs and an older version of the code. Numbers published
+for the original v8 do not apply. See `docs/RECONSTRUCCION.md` (Spanish) for what follows the
+documents, what was a judgment call, and what is new.
+
+## What the measurements say
+
+One machine: a 2-vCPU cloud VM (Xeon, AVX-512), gcc 13, n = 10^6, median of 5, pinned to one core.
+Run-to-run noise on this machine reached ±15%. Raw data: `results/`. Do not cite these numbers
+without repeating them on dedicated hardware.
+
+Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
+
+| Input | u32 | u64 | key+index (comparator) |
+|---|---|---|---|
+| random | 0.64 | 0.73 | 1.04 |
+| 16 distinct values | 0.42 | 0.76 | 0.73 |
+| √n distinct values | 0.35 | 0.36 | 0.81 |
+| Zipf | 0.29 | 0.43 | 0.54 |
+| sorted | 2.65 | 1.54 | 2.56 |
+| 1% noise | 1.63 | 1.33 | 1.58 |
+| 10% random tail | 1.49 | 1.48 | 1.50 |
+| organ pipe | 1.01 | 1.08 | 1.03 |
+| sawtooth, runs of √n | 2.28 | 1.81 | 2.01 |
+
+- It wins on random and duplicate-heavy integer inputs and **loses by 1.3–2.7× on structured
+  inputs** (sorted, nearly sorted, sawtooth).
+- Against O(n)-memory stable sorts (fluxsort, glidesort, driftsort), the fast mode with one thread
+  is ahead on random u32/u64 (0.69–0.76 of the best of them) and behind on structured inputs
+  (up to 2.7× slower than glidesort on sawtooth). The "16 values" and "√n values" rows of the fast
+  mode use the counting shortcut, so they are not a like-for-like comparison.
+- Extra memory for 10^7 u64 (80 MB of data): under 0.5 MB in O(1) mode; about 40 MB in fast mode.
+- McIlroy's adversary with random pre-frozen positions: at most 1.14·n·log2(n) comparisons
+  (n = 10^5 and 10^6). This is evidence, not a proof.
+- A defect of version 6 (no budget charge when separating elements equal to the pivot) is
+  reproducible with `-DSOT_V6_BUG`: a lazy adversary forces about n/6 comparisons per element.
+
+## Known limitations
+
+- If the comparator throws, elements can be lost (moved-from objects). No memory errors.
+- `T` must be default-constructible and copyable.
+- Tested on x86-64 Linux only. Not tested: ARM, Windows, cgroup v1, more than 2 physical cores.
+- The proofs are hand-written (Spanish, `docs/`); nothing is machine-checked.
+- The CI workflow in `.github/` has not been run on GitHub yet.
+
+## Layout
+
+- `include/sotsort.hpp` — the library.
+- `include/experimental/sotsort_ooo.hpp` — experimental dependency-driven task scheduler
+  (`sot::stable_sort_ooo`). Not part of the stable API; see `docs/OOO.md`.
+- `tests/` — differential tests against `std::stable_sort`, injected allocation failures,
+  adversaries. `make test`, `make sanitize`, `make adversary`.
+- `bench/` — comparison harness. `bench/build.sh` fetches the third-party sorts.
+- `docs/` — technical report (English), reconstruction notes, OOO study and lemmas (Spanish).
+
+## Credits
+
+The fused triple-reversal rotation follows blitsort's trinity rotation and the equal-length parity
+merge comes from quadsort (both by Igor van den Hoven, "scandum"). Natural-run merging uses the
+power criterion of powersort (Munro and Wild). Galloping comes from Timsort (Tim Peters). The
+duplicate handling through a lower bound is inspired by pdqsort (Orson Peters), and the fallback
+on unbalanced partitions by introsort (Musser). SymMerge is by Kim and Kutzner.
+
+## License
+
+Not chosen yet.

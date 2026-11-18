@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "SotSort: a stable in-place quicksort with a tunable buffer"
+type: software
+authors:
+  - family-names: Sotomayor
+    given-names: Lucas
+version: "8-r"
+date-released: 2026-11-17

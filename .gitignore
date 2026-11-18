@@ -1,0 +1,9 @@
+bench/ext/
+bench/wiki.hpp
+bench/bench
+bench/bench_ooo
+bench/rsort/target/
+*.o
+*.aux
+*.log
+*.out

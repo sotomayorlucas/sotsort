@@ -1,0 +1,20 @@
+name: ci
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        flags: ["-march=x86-64-v3", "-march=x86-64"]
+        cxx: [g++, clang++]
+    steps:
+      - uses: actions/checkout@v4
+      - name: tests
+        run: make test CXX=${{ matrix.cxx }} CXXFLAGS="-std=c++17 -O2 ${{ matrix.flags }} -Wall -Wextra"
+  sanitize:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - run: sed -i 's/-march=native/-march=x86-64-v3/' Makefile && make sanitize
