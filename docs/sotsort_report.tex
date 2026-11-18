@@ -82,6 +82,17 @@ the caveat above: the unequal-length parity merge without bounds checks, the sta
 partition, the unified constant-to-linear memory design with proofs parametrised by $B$, and the
 three routing probes above.
 
+\paragraph{Closest related work.} Moltmann, Nakajima and Wild~\cite{vmpowersort} attack the
+same trade-off from the mergesort side: Virtual-Memory Powersort lowers the buffer of an adaptive
+stable mergesort from $n/2$ to $O(\sqrt{n\log n})$ elements with the same moves and comparisons
+up to an additive $O(n)$. SotSort instead keeps a constant buffer and pays with rotations inside
+a quicksort; I have not compared the two experimentally, and that comparison is the most relevant
+one missing from this report. The natural-run path uses the power criterion of
+Powersort~\cite{powersort}. Its galloping follows Timsort; Ghasemi, Jugé and
+Khalighinejad~\cite{galloping} analyse galloping in this family of natural merge sorts. The
+branch-free block partition pursues the goal of BlockQuicksort~\cite{blockqs}, avoiding branch
+mispredictions, but keeps stability by writing every element to both destinations.
+
 \section{Testing}\label{sec:tests}
 Differential tests against \texttt{std::stable\_sort}, with original indices as tags to check
 stability, over 15 input families: 32- and 64-bit signed and unsigned integers, pairs, records of 16, 40 and 128 bytes,
@@ -186,4 +197,14 @@ comparison, so the structured-input rows are optimistic.
 
 \section{Availability}
 Code, tests, the benchmark harness and raw measurements accompany this report.
+\begin{thebibliography}{9}\small
+\bibitem{vmpowersort} F.~Moltmann, T.-V.~Nakajima, S.~Wild. Virtual-Memory Powersort. In
+  \emph{ESA 2026}, LIPIcs 388, 14:1--14:17, 2026. doi:10.4230/LIPIcs.ESA.2026.14.
+\bibitem{powersort} J.~I.~Munro, S.~Wild. Nearly-optimal mergesorts: fast, practical sorting
+  methods that optimally adapt to existing runs. In \emph{ESA 2018}, LIPIcs, 2018.
+\bibitem{galloping} E.~Ghasemi, V.~Jugé, G.~Khalighinejad. Galloping in fast-growth natural merge
+  sorts. In \emph{ICALP 2022}, LIPIcs 229, article 68, 2022.
+\bibitem{blockqs} S.~Edelkamp, A.~Weiß. BlockQuicksort: avoiding branch mispredictions in
+  Quicksort. In \emph{ESA 2016}, LIPIcs, article 38, 2016.
+\end{thebibliography}
 \end{document}
