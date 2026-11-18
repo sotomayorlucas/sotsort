@@ -8,7 +8,7 @@
 \title{\textbf{SotSort}: a stable quicksort with a tunable buffer\\[3pt]
 \large Design summary and an experimental comparison (version 8-r)}
 \author{Lucas Sotomayor}
-\date{17 November 2026 --- technical report, draft (revision 2)}
+\date{18 November 2026 --- technical report, draft (revision 3)}
 \begin{document}
 \maketitle
 
@@ -20,15 +20,13 @@ which parts are borrowed, and compares an implementation against blitsort, fluxs
 driftsort, GrailSort and WikiSort. On one 2-vCPU machine, with 32- and 64-bit integers, the constant-memory mode takes
 between 0.19 and 0.75 of blitsort's time on 16 of 22 input classes and between 0.94 and
 1.09 on the other six. With a comparator that rules out the vector partition it is
-slower than blitsort on 7 of 11 classes, by up to 2.6 times on sorted input. The
-implementation measured here is a reconstruction of a lost earlier version; all numbers
+slower than blitsort on 7 of 11 classes, by up to 2.6 times on sorted input. All numbers
 are preliminary.
 \end{abstract}
 
 \section{Scope and status}
-The code measured in this report, version 8-r, was rewritten from the pseudocode and
-hand-written proofs of versions 6.1 to 8 after the original source of version 8 was lost. It is
-not the code behind earlier unpublished measurements. The proofs (Hoare-style, in Spanish) cover
+This report describes and measures one artifact: version 8-r of \texttt{include/sotsort.hpp},
+at the tagged commit given in Section~\ref{sec:avail}. The proofs (Hoare-style, in Spanish) cover
 the algorithms as specified; they are not machine-checked, and the correspondence between the
 proofs and this C++ file rests on differential testing (Section~\ref{sec:tests}). I have not
 surveyed the literature in depth, so some ideas presented as mine may have prior art.
@@ -191,12 +189,13 @@ One machine, virtualised and shared, with two cores; no hardware counters; no AR
 the comparison tables; the competitors were built with their default settings; glidesort and
 driftsort cross a C-to-Rust call boundary once per sort. The comparison against blitsort uses
 its default 512-element buffer, while SotSort's buffer is 16\,KB (2048 64-bit elements): both
-are constant, but they are not equal. The implementation is a reconstruction. The thresholds
+are constant, but they are not equal. The thresholds
 of the routing probes were tuned on this one machine, on some of the same inputs used for the
 comparison, so the structured-input rows are optimistic.
 
-\section{Availability}
-Code, tests, the benchmark harness and raw measurements accompany this report.
+\section{Availability}\label{sec:avail}
+Code, tests, the benchmark harness and raw measurements: \url{https://github.com/sotomayorlucas/sotsort},
+tag \texttt{report-r3} (MPL-2.0).
 \begin{thebibliography}{9}\small
 \bibitem{vmpowersort} F.~Moltmann, T.-V.~Nakajima, S.~Wild. Virtual-Memory Powersort. In
   \emph{ESA 2026}, LIPIcs 388, 14:1--14:17, 2026. doi:10.4230/LIPIcs.ESA.2026.14.

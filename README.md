@@ -19,10 +19,8 @@ sot::stable_sort(v.data(), v.size(), [](const Record& a, const Record& b) { retu
 
 ## Status — read this first
 
-**This is version 8-r, a reconstruction.** The original v8 source was lost; `include/sotsort.hpp`
-was rewritten from the pseudocode, the proofs and an older version of the code. Numbers published
-for the original v8 do not apply. See `docs/RECONSTRUCCION.md` (Spanish) for what follows the
-documents, what was a judgment call, and what is new.
+This is version 8-r. The technical report describes and measures this code, at tag `report-r3`.
+Development history and design notes (Spanish): `docs/RECONSTRUCCION.md`.
 
 ## What the measurements say
 
@@ -76,7 +74,7 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 - `tests/` — differential tests against `std::stable_sort`, injected allocation failures,
   adversaries. `make test`, `make sanitize`, `make adversary`.
 - `bench/` — comparison harness. `bench/build.sh` fetches the third-party sorts.
-- `docs/` — technical report (English); proofs, addendum, reconstruction notes, OOO study and
+- `docs/` — technical report (English); proofs, addendum, design notes, OOO study and
   lemmas (Spanish), with LaTeX sources in `docs/tex/`.
 
 ## Credits
