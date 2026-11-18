@@ -1,0 +1,66 @@
+diff --git a/makefile b/makefile
+index 290c34d..f04f28a 100644
+--- a/makefile
++++ b/makefile
+@@ -1,4 +1,4 @@
+-CXXFLAGS := -std=c++20 -O2 -v
++CXXFLAGS := -std=c++20 -O2
+ 
+ HEADERNAMES := almost_inplace_powersort common copy_powersort inplace_powersort simple_powersort wikisort
+ HEADERS := $(addprefix src/, $(addsuffix .h, $(HEADERNAMES)))
+diff --git a/src/main.cpp b/src/main.cpp
+index 885a9d2..d5bbc10 100644
+--- a/src/main.cpp
++++ b/src/main.cpp
+@@ -1,4 +1,6 @@
+ #include <algorithm>
++#include <cmath>
++#include <sstream>
+ #include <array>
+ #include <cassert>
+ #include <iomanip>
+@@ -15,6 +17,7 @@
+ #include "inplace_powersort.h"
+ #include "simple_powersort.h"
+ #include "wikisort.h"
++#include "sotsort.hpp"
+ using namespace std;
+ 
+ long long dummy;
+@@ -27,6 +30,25 @@ template <typename T> static void my_stable_sort(T *v, T *ep) {
+     stable_sort(v, ep);
+ }
+ 
++
++// --- SotSort (agregado para la comparación; no es parte del artefacto original) ---
++// Mismo presupuesto de bytes que reserva almost_inplace_powersort (page_buf + punteros).
++template <typename T> static size_t vm_bytes(size_t n) {
++    const double target_p = sqrt((double)sizeof(T *) * 4 * n / (sizeof(T) * (log2(n) + 7)));
++    const size_t log_n = 33 - __builtin_clz(n + 1), log_p = 33 - __builtin_clz((int)target_p + 1),
++                 co_log_p = log_n - log_p + 1, max_runs = log_n + 4, extra_pages = max_runs + 3,
++                 page_buf_sz = extra_pages << log_p, free_page_buf_sz = extra_pages + 1, ptr_buf_sz = 4 << co_log_p;
++    return sizeof(T) * page_buf_sz + sizeof(T *) * (free_page_buf_sz + ptr_buf_sz);
++}
++template <typename T> static void sot_with(T *v, T *ep, size_t bytes) {
++    sot::Options o; o.threads = 1; o.probe = false; o.shortcuts = false; o.max_bytes = bytes;
++    sot::stable_sort_fast(v, size_t(ep - v), std::less<T>(), o);
++}
++template <typename T> static void my_sot0(T *v, T *ep) { sot_with(v, ep, 0); }
++template <typename T> static void my_sotvm(T *v, T *ep) { sot_with(v, ep, vm_bytes<T>(ep - v)); }
++template <typename T> static void my_sothalf(T *v, T *ep) { sot_with(v, ep, sizeof(T) * size_t(ep - v) / 2); }
++template <typename T> static void my_sotfull(T *v, T *ep) { sot_with(v, ep, sizeof(T) * size_t(ep - v)); }
++
+ template <typename T, bool count_comps = false, bool count_assignments = false>
+ struct wrapper {
+     T t;
+@@ -123,7 +145,9 @@ map<string, table_element<T, count_comps, count_assignments>> elements = {
+     make_pair(string("wiki"),
+               table_element<T, count_comps, count_assignments>{
+                   0, 0, 0, 0, 0, 0, 
+-                  &my_wikisort<wrapper<T, count_comps, count_assignments>>})};
++                  &my_wikisort<wrapper<T, count_comps, count_assignments>>}),
++#define SOTENT(NAME, F) make_pair(string(NAME), table_element<T, count_comps, count_assignments>{0, 0, 0, 0, 0, 0, &F<wrapper<T, count_comps, count_assignments>>})
++    SOTENT("sot0", my_sot0), SOTENT("sotvm", my_sotvm), SOTENT("sothalf", my_sothalf), SOTENT("sotfull", my_sotfull)};
+ 
+ void help() {
+     cerr
