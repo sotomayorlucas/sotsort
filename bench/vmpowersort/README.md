@@ -95,5 +95,6 @@ maxn = 10^6, 10 iterations, ratios to `almost` measured in the same run:
 Time, `sotvm / almost`, after the change: `int` 0.87–1.08; `ptr` 0.90–1.07 (before
 0.98–1.40); `arr` 0.71–1.19; `fastarr` still 1.42–1.59 except S = 10^6 (0.83). With the same
 memory, SotSort now ties Virtual-Memory Powersort on slow comparisons, and still loses when
-moves are expensive. Run-to-run noise between the two runs of identical code paths is up to
-about ±8% at 10 iterations, so differences below that are not meaningful.
+moves are expensive. In cells where the change saves almost nothing (int, S = 2: 1% of the
+comparisons) the ratio still moved by 7% between the two runs, so at 10 iterations differences
+below about ±8% are not meaningful.
