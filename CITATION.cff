@@ -7,3 +7,5 @@ authors:
     given-names: Lucas
 version: "8-r"
 date-released: 2026-11-17
+license: MPL-2.0
+repository-code: "https://github.com/sotomayorlucas/sotsort"

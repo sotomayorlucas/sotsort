@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Lucas Sotomayor
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file, You can obtain one at
+// https://mozilla.org/MPL/2.0/.
+//
 // sotsort.hpp — SotSort v8-r (RECONSTRUCCIÓN, 2026-11-17)
 //
 // El código fuente original de la versión 8 se perdió. Este archivo se

@@ -67,7 +67,6 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 - `T` must be default-constructible and copyable.
 - Tested on x86-64 Linux only. Not tested: ARM, Windows, cgroup v1, more than 2 physical cores.
 - The proofs are hand-written (Spanish, `docs/`); nothing is machine-checked.
-- The CI workflow in `.github/` has not been run on GitHub yet.
 
 ## Layout
 
@@ -90,4 +89,6 @@ on unbalanced partitions by introsort (Musser). SymMerge is by Kim and Kutzner.
 
 ## License
 
-Not chosen yet.
+Mozilla Public License 2.0 (`LICENSE`). In short: you may use SotSort in any program, open or
+closed; if you distribute modified versions of SotSort's own files, those files must stay under the
+MPL and their source must be available. This summary is not legal advice; the license text governs.

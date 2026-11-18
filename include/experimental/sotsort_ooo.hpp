@@ -1,3 +1,10 @@
+// SPDX-License-Identifier: MPL-2.0
+// Copyright (c) 2026 Lucas Sotomayor
+//
+// This Source Code Form is subject to the terms of the Mozilla Public License, v. 2.0.
+// If a copy of the MPL was not distributed with this file, You can obtain one at
+// https://mozilla.org/MPL/2.0/.
+//
 // sotsort_ooo.hpp — SotSort-OOO (EXPERIMENTAL, aislado de sotsort.hpp)
 //
 // Planificación por dependencias del quicksort estable: cada rango pendiente
