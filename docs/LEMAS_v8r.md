@@ -82,3 +82,18 @@ Enunciados y demostraciones completos: secciones 13.4 y 13.5 de `sotsort_demo.pd
 - **Zonas:** la zona [i, e) es un intervalo todavía no apilado y coherente; QuickEstable la deja
   ordenada y coherente, que es lo que el invariante de MergeNatural pide de un run. El recorrido
   hacia adelante agrega a lo sumo 3n comparaciones.
+
+## Observación T (v8-r3: giros estimados por muestreo)
+
+Con n ≥ 2^16, `few_turns` ya no cuenta todos los giros: estima su cantidad con 64 ventanas de 256
+pares consecutivos, una por tramo de n/64 elementos con desplazamiento pseudoaleatorio, y escala
+el conteo a n. Con n < 2^16, o compilando con `-DSOT_EXACT_TURNS`, el conteo sigue siendo exacto.
+
+- **Corrección:** la estimación solo alimenta la regla de ruta, que elige entre MergeNatural y
+  QuickEstable; los dos son correctos para toda entrada (Observación 13.3). Un error de estimación
+  cambia el camino, no el resultado. No escribe en el arreglo.
+- **Costo:** 64·256 = 16384 comparaciones fijas, contra n cuando hay pocos giros (antes el conteo
+  exacto no podía cortar antes de recorrer todo el arreglo). La detección de runs de MergeNatural
+  sigue recorriendo el arreglo una vez; el recorrido de los giros era el que sobraba.
+- **Garantía de peor caso:** sin cambios. Ninguno de los dos caminos depende de la decisión para
+  su cota O(n log n).

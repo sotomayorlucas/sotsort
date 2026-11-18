@@ -390,6 +390,13 @@ private:
     // Pocos giros (cambios entre tramo ascendente y descendente): runs largos.
     // g solo crece, así que se puede cortar apenas llega a n/8.
     bool few_turns(std::size_t n) {
+#ifndef SOT_EXACT_TURNS
+        // v8-r3: con n grande, la densidad de giros se estima con 64 ventanas de 256 pares
+        // (desplazamiento aleatorio). Contarlos todos costaba una comparación por elemento,
+        // que la detección de runs volvía a pagar. La decisión solo elige el camino: los dos
+        // ordenan bien, así que un error de estimación solo cuesta tiempo.
+        if (n >= TURN_SAMPLE_MIN) return route_by_turns(n, sampled_turns(n));
+#endif
         std::size_t g = 0;
         bool prev = lt(a_[1], a_[0]);
         std::size_t i = 2;
@@ -409,6 +416,22 @@ private:
             for (; i < e; ++i) { bool d = lt(a_[i], a_[i - 1]); g += d != prev; prev = d; }
             if (g * 8 >= n) return false;
         }
+        return route_by_turns(n, g);
+    }
+    static constexpr std::size_t TURN_SAMPLE_MIN = std::size_t(1) << 16;
+    // Giros estimados para todo [0, n): 64 ventanas de 256 pares, cada una en su tramo.
+    std::size_t sampled_turns(std::size_t n) {
+        const std::size_t K = 64, Wn = 256, seg = n / K;          // seg >= 1024
+        std::size_t g = 0;
+        for (std::size_t k = 0; k < K; ++k) {
+            std::size_t s0 = k * seg + 1 + static_cast<std::size_t>(rnd() % (seg - Wn - 1));
+            bool prev = lt(a_[s0], a_[s0 - 1]);
+            for (std::size_t i = s0 + 1; i <= s0 + Wn; ++i) { bool d = lt(a_[i], a_[i - 1]); g += d != prev; prev = d; }
+        }
+        return g * n / (K * Wn);                                    // escala a n (aprox.)
+    }
+    // Regla de ruta común: g giros (contados o estimados) en n elementos.
+    bool route_by_turns(std::size_t n, std::size_t g) {
         if (g * 8 >= n) return false;
         if (!TRIV) return true;                        // tipos no triviales: la regla de ruta midió peor (strings)
         if (sample_ordered(n)) return true;            // orden global: mezclas con rachas largas

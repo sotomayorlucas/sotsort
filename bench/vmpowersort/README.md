@@ -74,3 +74,26 @@ Reading:
   detection (one extra comparison per element); this is a concrete thing to fix.
 - With more memory (`sothalf`) SotSort gets close to the n/2-buffer Powersorts on `arr`
   and `fastarr`, but does not beat `copy`/`simple` consistently.
+
+## Update: v8-r3, turn density estimated by sampling (`results-ab/`)
+
+The extra ~1 comparison per element on presorted input came from the exact turn count in
+`few_turns`, which must scan the whole array when turns are few, before the natural merge sort
+scans it again for runs. From n ≥ 2^16 it is now estimated from 64 windows of 256 adjacent
+pairs (16384 comparisons); `-DSOT_EXACT_TURNS` restores the exact count. The estimate only
+chooses between two correct paths (see `docs/LEMAS_v8r.md`, Observación T).
+
+A/B on the same harness and machine (`ab.sh`; old = `-DSOT_EXACT_TURNS`, new = default),
+maxn = 10^6, 10 iterations, ratios to `almost` measured in the same run:
+
+| int comparisons/element | S = 2 | 100   | 1000  | 10^4 | 10^5 | 10^6 |
+|-------------------------|-------|-------|-------|------|------|------|
+| almost                  | 28.93 | 15.55 | 10.39 | 7.39 | 4.30 | 1.69 |
+| sotvm before            | 19.69 | 15.17 | 11.51 | 8.50 | 5.34 | 2.30 |
+| sotvm after             | 19.48 | 14.20 | 10.55 | 7.51 | 4.36 | 1.71 |
+
+Time, `sotvm / almost`, after the change: `int` 0.87–1.08; `ptr` 0.90–1.07 (before
+0.98–1.40); `arr` 0.71–1.19; `fastarr` still 1.42–1.59 except S = 10^6 (0.83). With the same
+memory, SotSort now ties Virtual-Memory Powersort on slow comparisons, and still loses when
+moves are expensive. Run-to-run noise between the two runs of identical code paths is up to
+about ±8% at 10 iterations, so differences below that are not meaningful.
