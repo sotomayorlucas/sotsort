@@ -19,7 +19,7 @@ sot::stable_sort(v.data(), v.size(), [](const Record& a, const Record& b) { retu
 
 ## Status — read this first
 
-This is version 8-r. The technical report describes and measures this code, at tag `report-r3`.
+This is version 8-r. The technical report describes and measures this code, at commit `c16d43f`.
 Development history and design notes (Spanish): `docs/RECONSTRUCCION.md`.
 
 ## What the measurements say

@@ -26,7 +26,7 @@ are preliminary.
 
 \section{Scope and status}
 This report describes and measures one artifact: version 8-r of \texttt{include/sotsort.hpp},
-at the tagged commit given in Section~\ref{sec:avail}. The proofs (Hoare-style, in Spanish) cover
+at the commit given in Section~\ref{sec:avail}. The proofs (Hoare-style, in Spanish) cover
 the algorithms as specified; they are not machine-checked, and the correspondence between the
 proofs and this C++ file rests on differential testing (Section~\ref{sec:tests}). I have not
 surveyed the literature in depth, so some ideas presented as mine may have prior art.
@@ -195,7 +195,7 @@ comparison, so the structured-input rows are optimistic.
 
 \section{Availability}\label{sec:avail}
 Code, tests, the benchmark harness and raw measurements: \url{https://github.com/sotomayorlucas/sotsort},
-tag \texttt{report-r3} (MPL-2.0).
+code at commit \texttt{c16d43f} (MPL-2.0).
 \begin{thebibliography}{9}\small
 \bibitem{vmpowersort} F.~Moltmann, T.-V.~Nakajima, S.~Wild. Virtual-Memory Powersort. In
   \emph{ESA 2026}, LIPIcs 388, 14:1--14:17, 2026. doi:10.4230/LIPIcs.ESA.2026.14.
