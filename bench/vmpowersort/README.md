@@ -98,3 +98,58 @@ memory, SotSort now ties Virtual-Memory Powersort on slow comparisons, and still
 moves are expensive. In cells where the change saves almost nothing (int, S = 2: 1% of the
 comparisons) the ratio still moved by 7% between the two runs, so at 10 iterations differences
 below about ±8% are not meaningful.
+
+## Update 2: where the extra moves come from, n = 10^7, second machine
+
+**Moves by phase** (`assignments_by_phase.cpp`, int wrapper, n = 950 000, v8-r3). All the
+excess over Virtual-Memory Powersort is in rotations inside merges whose runs both exceed the
+buffer; the buffer merges themselves are identical for every budget:
+
+| S     | rotations, VM budget | rotations, n/2 budget | buffer merges (both) |
+|-------|----------------------|-----------------------|----------------------|
+| 1000  | 3.75                 | 0.75                  | 13.84                |
+| 10^4  | 3.76                 | 0.74                  | 8.67                 |
+| 10^5  | 4.30                 | 0.71                  | 4.39                 |
+
+SymMerge halves the larger run and rotates about half the range per level, for log2(m/B)
+levels when the runs are larger than the buffer B. This is structural: with a buffer of
+O(sqrt(n log n)) elements, rotation-based merging pays Θ(log(m/B)) extra moves per element of
+each large merge, while Virtual-Memory Powersort moves pages by pointer and avoids it.
+
+**Rejected: cycle-leader rotation for large elements** (`results-juggle-rejected/`, fastarr,
+120 bytes). It cuts moves (S = 10^5: 14.40 → 11.93 per element) but is slower in 7 of 12
+cells, e.g. S = 10^6 `sotvm/almost` 0.79 → 1.11, because of the strided access. Not merged.
+
+**n = 10^7, int** (`results-1e7/`, same cloud VM, 10 iterations for time, 3 for counts):
+
+| S                         | 2    | 100  | 1000 | 10^4 | 10^5 | 10^6 |
+|---------------------------|------|------|------|------|------|------|
+| time sotvm / almost       | 1.09 | 1.10 | 1.13 | 1.17 | 1.19 | 1.24 |
+| time sothalf / copy       | 1.06 | 1.10 | 1.09 | 1.05 | 1.10 | 1.05 |
+| comparisons/elem almost   | 26.80| 17.26| 13.58| 10.52| 7.24 | 3.98 |
+| comparisons/elem sotvm    | 22.30| 17.35| 13.81| 10.68| 7.27 | 4.06 |
+| assignments/elem almost   | 30.71| 19.37| 15.55| 12.50| 9.22 | 5.96 |
+| assignments/elem sotvm    | 44.99| 31.96| 27.04| 22.51| 16.89| 10.77|
+
+At n = 10^7 the buffer is a smaller fraction of n, so rotations grow and SotSort loses by
+9–24% with the same memory, and by 5–10% against CPython-style Powersort with n/2 memory.
+Comparisons are within 2% for S ≥ 100.
+
+Check against the paper's own data (`average-time.txt`, i7-4770): our absolute times for
+`almost` are close to theirs (e.g. S = 10^6: 0.129 s here, 0.128 s there; S = 2: 0.93 vs
+0.82), but there `copy` is about 10–25% faster than `almost` and here they are within 4%.
+So the relative cost of their own variants is not reproduced on this machine.
+
+**Second machine** (`results-pc/`: Intel Core Ultra 7 155H, Linux VM with 2 vCPU on Windows,
+gcc 11.4, n = 10^6, 10 iterations). `sotvm / almost`:
+
+| type    | S = 2 | 100  | 1000 | 10^4 | 10^5 | 10^6 |
+|---------|-------|------|------|------|------|------|
+| int     | 1.08  | 1.09 | 1.07 | 1.12 | 1.14 | 0.99 |
+| ptr     | 0.93  | 1.00 | 1.05 | 1.11 | 1.14 | 1.04 |
+| arr     | 0.87  | 0.90 | 0.92 | 0.99 | 1.11 | 0.83 |
+| fastarr | 1.39  | 1.21 | 1.30 | 1.35 | 1.35 | 0.81 |
+
+Comparison and assignment counts are identical to the cloud run (deterministic). Same picture:
+roughly a tie on cheap moves, a clear loss on expensive moves. Both machines are VMs with
+2 vCPU; a bare-metal run is still missing.
