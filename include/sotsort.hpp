@@ -540,6 +540,101 @@ private:
         }
     }
 
+    // ------------------------------------------------- mezcla por páginas (v8-r4)
+    // Para mezclas donde los dos runs superan el buffer. Idea de Virtual-Memory Powersort
+    // (Moltmann, Nakajima, Wild, ESA 2026), adaptada: la zona [l, r) se divide en páginas de
+    // P = B/8 elementos y el buffer aporta 8 páginas libres. La mezcla escribe cada página de
+    // salida en una página libre (del buffer o de entrada ya consumida) y anota dónde quedó;
+    // al final las páginas se permutan a su lugar siguiendo ciclos. Movimientos: n para la
+    // mezcla más a lo sumo n + P·ciclos para la permutación, sin rotaciones.
+    // Lugar: con c elementos consumidos hay al menos c/P − 3 páginas de entrada liberadas
+    // (dos páginas parciales y la que comparten X e Y), y la salida usa a lo sumo c/P + 1; con
+    // 8 del buffer (una menos si la última página es parcial y queda reservada) siempre sobra.
+    // La tabla ocupa 4·(n/P + 9) bytes en el heap; se usa solo si es a lo sumo 1/8 del buffer.
+    static constexpr std::size_t PG_K = 8;
+    std::vector<std::uint32_t> pg_, pgw_, pgf_;
+    bool page_ok(std::size_t n) const {
+        const std::size_t P = B_ / PG_K;
+        if (P < 64 || n / P + PG_K + 2 >= (std::size_t(1) << 31)) return false;
+        return (n / P + PG_K + 2) * sizeof(std::uint32_t) * 8 <= B_ * sizeof(T);
+    }
+    void page_merge(std::size_t l, std::size_t m, std::size_t r) {
+        const std::size_t n = r - l, nl = m - l, P = B_ / PG_K;
+        const std::size_t R = (n + P - 1) / P, last = n - (R - 1) * P;
+        const bool partial = last < P;
+        T* A = a_ + l;
+        auto base = [&](std::size_t ph) -> T* { return ph < R ? A + ph * P : buf_ + (ph - R) * P; };
+        auto plen = [&](std::size_t lg) { return lg == R - 1 ? last : P; };
+        pg_.assign(R, 0);
+        pgf_.clear();
+        for (std::size_t k = PG_K; k-- > 0;) pgf_.push_back(static_cast<std::uint32_t>(R + k));
+        bool last_free = false, bnd_rel = false;
+        const std::size_t bnd = nl / P;                       // página que comparten X e Y (si nl % P)
+        // El cursor de Y empieza después de la página compartida: esa la libera el de X.
+        std::size_t x = 0, y = nl, olog = 0, orem = 0, xp = 0, yp = nl % P ? bnd + 1 : bnd;
+        T* out = nullptr;
+        auto consumed = [&](std::size_t i) {
+            std::size_t s0 = i * P, e0 = std::min(s0 + P, n);
+            if (e0 <= nl) return x >= e0;
+            if (s0 >= nl) return y >= e0;
+            return x >= nl && y >= e0;
+        };
+        auto release = [&](std::size_t i) {
+            if (i == bnd && nl % P) { if (bnd_rel) return; bnd_rel = true; }
+            if (partial && i == R - 1) last_free = true;
+            else pgf_.push_back(static_cast<std::uint32_t>(i));
+        };
+        while (olog < R || orem) {
+            if (!orem) {
+                std::size_t ph;
+                if (olog == R - 1 && partial && last_free) { ph = R - 1; last_free = false; }
+                else { ph = pgf_.back(); pgf_.pop_back(); }
+                pg_[olog] = static_cast<std::uint32_t>(ph);
+                out = base(ph); orem = plen(olog); ++olog;
+            }
+            std::size_t xa = x < nl ? std::min(nl, (x / P + 1) * P) - x : 0;
+            std::size_t ya = y < n ? std::min(n, (y / P + 1) * P) - y : 0;
+            std::size_t k;
+            if (!xa) { k = std::min(orem, ya); out = std::move(A + y, A + y + k, out); y += k; }
+            else if (!ya) { k = std::min(orem, xa); out = std::move(A + x, A + x + k, out); x += k; }
+            else {
+                k = std::min(orem, std::min(xa, ya));
+                T *px = A + x, *py = A + y;
+                for (std::size_t t = 0; t < k; ++t) {
+                    if (lt(*py, *px)) *out++ = std::move(*py++);
+                    else *out++ = std::move(*px++);
+                }
+                x = static_cast<std::size_t>(px - A); y = static_cast<std::size_t>(py - A);
+            }
+            orem -= k;
+            while (xp * P < nl && consumed(xp)) release(xp++);
+            while (yp < R && consumed(yp)) release(yp++);
+        }
+        // Permutación: la página lógica j va a la página física j de la zona.
+        pgw_.assign(R + PG_K, 0xFFFFFFFFu);                    // física -> lógica
+        for (std::size_t j = 0; j < R; ++j) pgw_[pg_[j]] = static_cast<std::uint32_t>(j);
+        auto chain = [&](std::size_t cur) {                    // cur: página de la zona libre
+            for (;;) {
+                std::size_t src = pg_[cur];
+                std::move(base(src), base(src) + plen(cur), base(cur));
+                pgw_[cur] = static_cast<std::uint32_t>(cur); pg_[cur] = static_cast<std::uint32_t>(cur);
+                pgw_[src] = 0xFFFFFFFFu;
+                if (src >= R) return;
+                cur = src;
+            }
+        };
+        for (std::size_t f = 0; f < R; ++f)
+            if (pgw_[f] == 0xFFFFFFFFu) chain(f);
+        for (std::size_t j = 0; j < R; ++j) {
+            if (pg_[j] == j) continue;
+            std::size_t w = pgw_[j], tmp = R;                  // ciclo: la ocupante va a una página del buffer
+            while (pgw_[tmp] != 0xFFFFFFFFu) ++tmp;
+            std::move(base(j), base(j) + plen(w), base(tmp));
+            pg_[w] = static_cast<std::uint32_t>(tmp); pgw_[tmp] = static_cast<std::uint32_t>(w); pgw_[j] = 0xFFFFFFFFu;
+            chain(j);
+        }
+    }
+
     // Triple reversión fusionada (idea: trinity rotation de scandum).
     static void fused_reversal_rotate(T* first, T* mid, T* last) {
         T *pa = first, *pb = mid, *pc = mid, *pd = last;
@@ -730,6 +825,9 @@ private:
             if (nl <= nr && nl <= B) { merge_left_buf(l, m, r, mode); continue; }
             if (nr <= B) { merge_right_buf(l, m, r, mode); continue; }
             if (nl <= B) { merge_left_buf(l, m, r, mode); continue; }
+#ifndef SOT_NO_PAGES
+            if (page_ok(nl + nr)) { page_merge(l, m, r); continue; }
+#endif
             std::size_t m1, m2;
             if (nl >= nr) { m1 = l + (nl >> 1); m2 = lower_bound(m, r, a_[m1]); }
             else          { m2 = m + (nr >> 1); m1 = upper_bound(l, m, a_[m2]); }
