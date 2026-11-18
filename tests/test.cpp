@@ -30,6 +30,8 @@ static std::vector<u64> keys(size_t n, int d) {
     case 9: for (size_t i = 0; i < n; i++) v[i] = (i * 2654435761u) % 7 + (i / 300) * 3; break;
     case 10: for (size_t i = 0; i < n; i++) v[i] = 100000 + U(60000); break;          // rango < 2^16 (conteo)
     case 11: { size_t L = 1 + U(40); for (size_t i = 0; i < n; i++) v[i] = U(m); for (size_t i = 0; i < n; i += L) std::sort(v.begin() + i, v.begin() + std::min(n, i + L), std::greater<u64>()); } break;
+    case 12: for (size_t i = 0; i < n; i++) v[i] = i; if (n > 50) { size_t s = U(n / 2), l = 1 + U(n / 4); for (size_t i = s; i < s + l && i < n; i++) v[i] = U(m); } break;  // zona desordenada
+    case 13: { size_t L = 200 + U(5000); for (size_t i = 0; i < n; i++) v[i] = U(m); for (size_t i = 0; i < n; i += L) std::sort(v.begin() + i, v.begin() + std::min(n, i + L)); } break;  // runs largos de claves al azar
     default: for (auto& x : v) x = U(1000);
   }
   return v;
@@ -65,7 +67,7 @@ int main(int argc, char** argv) {
   for (int it = 0; it < rounds; it++) {
     size_t n = it < 40 ? it : (it % 7 == 0 ? U(maxn * 40) : U(maxn));
     if (it % 53 == 52) n = 300000 + U(300000);
-    int d = it % 13;
+    int d = it % 15;
     auto k = keys(n, d);
     sot::Options o = opts[it % opts.size()];
     if (it % 3 == 0 && n) { o.max_bytes = 8 * (1 + U(2 * n)); o.probe = false; }          // bloques de tamaños varios

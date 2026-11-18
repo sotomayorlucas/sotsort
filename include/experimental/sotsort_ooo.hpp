@@ -159,13 +159,17 @@ void stable_sort_ooo(T* a, std::size_t n, Cmp c = Cmp(), const Options& o = Opti
                 if (f < 2) f = 2;
                 if (f < t) {
                     bool prev = cc(a[f - 1], a[f - 2]);
-                    for (std::size_t j = f; j < t; ++j) { bool dd = cc(a[j], a[j - 1]); k += dd != prev; prev = dd; }
+                    while (f < t) {                 // corte temprano: si un tramo solo ya llega a n/8, no hay pocos giros
+                        std::size_t e = std::min(t, f + 4096);
+                        for (; f < e; ++f) { bool dd = cc(a[f], a[f - 1]); k += dd != prev; prev = dd; }
+                        if (k * 8 >= n) break;
+                    }
                 }
                 g[i] = k;
             });
             std::size_t tot = 0;
             for (auto x : g) tot += x;
-            few = tot * 8 < n;
+            few = tot * 8 < n && (!std::is_trivially_copyable<T>::value || s0->sample_is_ordered(n));
             s0->set_few_turns(few);
         }
         if (P < 2 || n < 4 * grain || few) {

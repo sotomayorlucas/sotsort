@@ -178,6 +178,53 @@ constexpr bool have_simd = true;
 constexpr bool have_simd = false;
 #endif
 
+// Máscara de adyacentes: bit j = (p[j] < p[j-1]), para j en [0, W). Requiere p[-1..W) válido.
+template <class T> struct AdjW {
+#if defined(__AVX512F__)
+    static constexpr std::size_t W = 64 / sizeof(T);
+#elif defined(__AVX2__)
+    static constexpr std::size_t W = 32 / sizeof(T);
+#else
+    static constexpr std::size_t W = 1;
+#endif
+};
+template <class T>
+inline unsigned adj_lt_mask(const T* p) {
+    const bool sg = std::is_signed<T>::value; (void)sg; (void)p;
+#if defined(__AVX512F__)
+    const __m512i Y = _mm512_loadu_si512(static_cast<const void*>(p));
+    const __m512i X = _mm512_loadu_si512(static_cast<const void*>(p - 1));
+    if (sizeof(T) == 8) return sg ? _mm512_cmplt_epi64_mask(Y, X) : _mm512_cmplt_epu64_mask(Y, X);
+    return sg ? _mm512_cmplt_epi32_mask(Y, X) : _mm512_cmplt_epu32_mask(Y, X);
+#elif defined(__AVX2__)
+    __m256i Y = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(p));
+    __m256i X = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(p - 1));
+    if (sizeof(T) == 8) {
+        if (!sg) { const __m256i b = _mm256_set1_epi64x(static_cast<long long>(0x8000000000000000ull)); X = _mm256_xor_si256(X, b); Y = _mm256_xor_si256(Y, b); }
+        return static_cast<unsigned>(_mm256_movemask_pd(_mm256_castsi256_pd(_mm256_cmpgt_epi64(X, Y))));
+    }
+    if (!sg) { const __m256i b = _mm256_set1_epi32(static_cast<int>(0x80000000u)); X = _mm256_xor_si256(X, b); Y = _mm256_xor_si256(Y, b); }
+    return static_cast<unsigned>(_mm256_movemask_ps(_mm256_castsi256_ps(_mm256_cmpgt_epi32(X, Y))));
+#else
+    return 0;
+#endif
+}
+inline unsigned ctz32(unsigned x) { unsigned n = 0; while (!(x & 1u)) { x >>= 1; ++n; } return n; }
+inline unsigned pop32(unsigned x) { unsigned n = 0; while (x) { x &= x - 1; ++n; } return n; }
+
+// Selección sin branch: devuelve t ? a : b con aritmética de punteros. gcc convierte
+// `t ? *a : *b` en un salto en varios de estos lazos; clang no. Medido: ver docs.
+template <class T>
+inline const T* sel(bool t, const T* a, const T* b) {
+#if defined(SOT_NO_SEL) || defined(__clang__) || !defined(__GNUC__)
+    return t ? a : b;
+#else
+    if (std::is_arithmetic<T>::value) return t ? a : b;      // con escalares gcc ya emite cmov
+    const std::uintptr_t ua = reinterpret_cast<std::uintptr_t>(a), ub = reinterpret_cast<std::uintptr_t>(b);
+    return reinterpret_cast<const T*>(ub ^ ((ua ^ ub) & (std::uintptr_t(0) - static_cast<std::uintptr_t>(t))));
+#endif
+}
+
 // Galope: cantidad de índices iniciales de [0, m) que cumplen q (q monótono:
 // verdadero y después falso). Prueba 0, 1, 3, 7, 15, ... y termina con
 // búsqueda binaria.
@@ -197,8 +244,14 @@ inline std::size_t gallop(std::size_t m, Q q) {
 template <class T, class Cmp = std::less<T>>
 class Sorter {
 public:
-    static constexpr std::size_t B0 = (16384 / sizeof(T)) > 128 ? (16384 / sizeof(T)) : 128;  // buffer propio
-    static constexpr std::size_t LEAF = 128;     // rangos <= LEAF van a la hoja (LEAF <= B0)
+#ifndef SOT_B0_BYTES
+#define SOT_B0_BYTES 16384
+#endif
+#ifndef SOT_LEAF
+#define SOT_LEAF 128
+#endif
+    static constexpr std::size_t LEAF = SOT_LEAF;   // rangos <= LEAF van a la hoja (LEAF <= B0)
+    static constexpr std::size_t B0 = (SOT_B0_BYTES / sizeof(T)) > LEAF ? (SOT_B0_BYTES / sizeof(T)) : LEAF;  // buffer propio
     static constexpr std::size_t RUN = 24;       // inserción / largo mínimo de run
     static constexpr std::size_t N9 = 8192;      // hasta aquí el pivote es un ninther
     static constexpr std::size_t MG = 7;         // umbral de galope
@@ -224,6 +277,7 @@ public:
         return g;
     }
     void set_few_turns(bool few) { turns_ = few ? 1 : 0; }
+    bool sample_is_ordered(std::size_t n) { return sample_ordered(n); }
     // Piezas para la partición paralela de la raíz (experimental).
     T pick_pivot(std::size_t lo, std::size_t n) { return pivot_value(lo, n); }
     std::size_t part_chunk(std::size_t lo, std::size_t hi, const T& piv, T* out) {   // x < piv; el resto queda en out
@@ -247,10 +301,27 @@ public:
     bool already_sorted(std::size_t lo, std::size_t hi) {
         if (hi - lo < 2) { asc_end_ = hi; return true; }
         std::size_t i = lo + 1;
+        if constexpr (SIMD) {
+            const std::size_t W = detail::AdjW<T>::W;
+            while (i + W <= hi) {
+                unsigned m = detail::adj_lt_mask(a_ + i);
+                if (m) { i += detail::ctz32(m); break; }
+                i += W;
+            }
+        }
         while (i < hi && !lt(a_[i], a_[i - 1])) ++i;
         asc_end_ = i;
         if (i == hi) return true;
         if (i == lo + 1) {
+            if constexpr (SIMD) {
+                const std::size_t W = detail::AdjW<T>::W;
+                const unsigned full = W >= 32 ? ~0u : ((1u << W) - 1);
+                while (i + W <= hi) {
+                    unsigned m = ~detail::adj_lt_mask(a_ + i) & full;
+                    if (m) { i += detail::ctz32(m); break; }
+                    i += W;
+                }
+            }
             while (i < hi && lt(a_[i], a_[i - 1])) ++i;
             if (i == hi) { std::reverse(a_ + lo, a_ + hi); return true; }
         }
@@ -317,10 +388,57 @@ private:
         std::size_t i = 2;
         while (i < n) {
             std::size_t e = std::min(n, i + 4096);
+            if constexpr (SIMD) {
+                const std::size_t W = detail::AdjW<T>::W;
+                const unsigned full = W >= 32 ? ~0u : ((1u << W) - 1);
+                unsigned carry = prev;
+                for (; i + W <= e; i += W) {
+                    unsigned m = detail::adj_lt_mask(a_ + i);
+                    g += detail::pop32((m ^ ((m << 1) | carry)) & full);
+                    carry = (m >> (W - 1)) & 1u;
+                }
+                prev = carry != 0;
+            }
             for (; i < e; ++i) { bool d = lt(a_[i], a_[i - 1]); g += d != prev; prev = d; }
             if (g * 8 >= n) return false;
         }
-        return g * 8 < n;
+        if (g * 8 >= n) return false;
+        if (!TRIV) return true;                        // tipos no triviales: la regla de ruta midió peor (strings)
+        if (sample_ordered(n)) return true;            // orden global: mezclas con rachas largas
+        // Runs con valores entremezclados: mezclar cuesta lg(runs) niveles y el quicksort
+        // lg(n/L). Un nivel de mezcla es más caro: k veces, según el modo (constantes medidas
+        // en una sola máquina). runs ~ giros/2 + 1.
+        std::size_t runs = g / 2 + 1;
+        unsigned lr = 0, lq = 0;
+        while ((std::size_t(1) << lr) < runs) ++lr;
+        while ((LEAF << lq) < n) ++lq;
+        const bool full = B_ >= n / 2;
+        const unsigned k4 = full ? (SIMD ? 8u : 5u) : (SIMD ? 12u : 8u);   // k en cuartos
+        return lr * k4 <= lq * 4;
+    }
+    // Sonda de orden global (v8-r2): 256 muestras equiespaciadas. Si la dirección entre muestras
+    // vecinas cambia seguido, los runs tienen valores entremezclados (sierra de claves al azar)
+    // y mezclarlos cuesta lg(runs) niveles: conviene el quicksort. Solo afecta el tiempo.
+    bool sample_ordered_impl(std::size_t n) {
+        if (n < 4096) return true;
+        const std::size_t S = 256;
+        std::size_t ch = 0;
+        const std::size_t st = n / S;                  // posiciones con desplazamiento pseudoaleatorio:
+        std::size_t p0 = static_cast<std::size_t>(rnd() % st), p1 = st + static_cast<std::size_t>(rnd() % st);   // sin él, runs de largo fijo hacen alias
+        bool prev = lt(a_[p1], a_[p0]);
+        for (std::size_t j = 2; j < S; ++j) {
+            std::size_t p2 = j * st + static_cast<std::size_t>(rnd() % st);
+            bool d = lt(a_[p2], a_[p1]);
+            ch += d != prev; prev = d; p1 = p2;
+        }
+        return ch * 4 < S;
+    }
+    bool sample_ordered(std::size_t n) {
+#ifdef SOT_NO_SAMPLE
+        (void)n; return true;
+#else
+        return sample_ordered_impl(n);
+#endif
     }
 
     void insertion(std::size_t lo, std::size_t hi) {
@@ -405,11 +523,12 @@ private:
 
     // ------------------------------------------------- merges con buffer
     // Precondición: (m-l) <= B. Fusión hacia adelante.
-    void merge_left_buf(std::size_t l, std::size_t m, std::size_t r) {
+    // modo: 0 = sin branch, 1 = con branch, 2 = galope
+    void merge_left_buf(std::size_t l, std::size_t m, std::size_t r, int mode) {
         std::size_t nl = m - l;
         std::move(a_ + l, a_ + m, buf_);
         T *p = buf_, *pe = buf_ + nl, *q = a_ + m, *qe = a_ + r, *o = a_ + l;
-        if (adaptive_ && gallop_) {
+        if (mode == 2) {
             while (p < pe && q < qe) {
                 std::size_t cx = 0, cy = 0;
                 if constexpr (TRIV) {                   // paso de cabeza sin branch; los contadores van por cmov
@@ -437,7 +556,7 @@ private:
             std::move(p, pe, o);
             return;
         }
-        if (adaptive_) {
+        if (mode == 1) {
             while (p < pe && q < qe) { if (lt(*q, *p)) *o++ = std::move(*q++); else *o++ = std::move(*p++); }
         } else {
             while (p < pe && q < qe) {
@@ -449,11 +568,11 @@ private:
         std::move(p, pe, o);
     }
     // Precondición: (r-m) <= B. Fusión hacia atrás.
-    void merge_right_buf(std::size_t l, std::size_t m, std::size_t r) {
+    void merge_right_buf(std::size_t l, std::size_t m, std::size_t r, int mode) {
         std::size_t nr = r - m;
         std::move(a_ + m, a_ + r, buf_);
         T *i = a_ + m, *il = a_ + l, *j = buf_ + nr, *o = a_ + r;   // quedan [il, i) y [buf_, j)
-        if (adaptive_ && gallop_) {
+        if (mode == 2) {
             while (i > il && j > buf_) {
                 std::size_t cx = 0, cy = 0;
                 if constexpr (TRIV) {
@@ -483,7 +602,7 @@ private:
             std::move_backward(buf_, j, o);
             return;
         }
-        if (adaptive_) {
+        if (mode == 1) {
             while (i > il && j > buf_) { if (lt(*(j - 1), *(i - 1))) *--o = std::move(*--i); else *--o = std::move(*--j); }
         } else {
             while (i > il && j > buf_) {
@@ -503,14 +622,14 @@ private:
         T *dh = D, *dt = D + na + nb - 1;
         for (std::size_t k = std::min(na, nb); k; --k) {
             bool x = lt(*pr, *pl);
-            *dh++ = x ? *pr : *pl; pr += x; pl += !x;
+            *dh++ = *detail::sel(x, pr, pl); pr += x; pl += !x;
             bool y = lt(*tr, *tl);
-            *dt-- = y ? *tl : *tr; tl -= y; tr -= !y;
+            *dt-- = *detail::sel(y, tl, tr); tl -= y; tr -= !y;
         }
         const T *le = tl + 1, *re = tr + 1;
         while (pl < le && pr < re) {
             bool x = lt(*pr, *pl);
-            *dh++ = x ? *pr : *pl; pr += x; pl += !x;
+            *dh++ = *detail::sel(x, pr, pl); pr += x; pl += !x;
         }
         while (pl < le) *dh++ = *pl++;
         while (pr < re) *dh++ = *pr++;
@@ -529,13 +648,14 @@ private:
             l = upper_bound(l, m, a_[m]);
             r = lower_bound(m, r, a_[m - 1]);
             std::size_t nl = m - l, nr = r - m;
-            if (TRIV && nl + nr <= B) {
-                // Todo entra en el buffer: parity merge (sin branch, dos cadenas) o mezcla con
-                // copia del lado chico y galope. En el camino de runs naturales se decide con
-                // una sonda (v8-r): 8 muestras de X ubicadas en Y. En un hueco con gx elementos
-                // de X y gy de Y hay a lo sumo 2*min(gx,gy)+1 cambios de lado; si la cota total
-                // da rachas de 8 o más en promedio, conviene el galope. Las dos mezclas son
-                // estables y correctas: la sonda solo afecta el tiempo.
+            // Elección de la mezcla. Tipos trivialmente copiables en el camino de runs naturales:
+            // una sonda (v8-r) estima las rachas. 8 muestras de X ubicadas en Y; en un hueco con
+            // gx elementos de X y gy de Y hay a lo sumo 2*min(gx,gy)+1 cambios de lado. Si la
+            // cota da rachas de 8 o más en promedio: galope. Si no: parity merge cuando todo
+            // entra en el buffer, o mezcla con branch. Todas las mezclas son estables y
+            // correctas: la sonda solo afecta el tiempo.
+            int mode = adaptive_ ? (gallop_ ? 2 : 1) : 0;
+            if constexpr (TRIV) {
                 bool par = true;
                 if (adaptive_ && nl + nr >= 256) {
                     std::size_t prevy = m, prevx = l, sw = 0;
@@ -547,15 +667,16 @@ private:
                     }
                     par = sw * 8 > nl + nr;
                 }
-                if (par) {
+                if (par && nl + nr <= B) {
                     std::copy(a_ + l, a_ + r, buf_);
                     parity_unequal(buf_, nl, buf_ + nl, nr, a_ + l);
                     continue;
                 }
+                mode = par ? (adaptive_ ? 1 : 0) : 2;   // intercalado que no entra en el buffer: con branch (patrones regulares)
             }
-            if (nl <= nr && nl <= B) { merge_left_buf(l, m, r); continue; }
-            if (nr <= B) { merge_right_buf(l, m, r); continue; }
-            if (nl <= B) { merge_left_buf(l, m, r); continue; }
+            if (nl <= nr && nl <= B) { merge_left_buf(l, m, r, mode); continue; }
+            if (nr <= B) { merge_right_buf(l, m, r, mode); continue; }
+            if (nl <= B) { merge_left_buf(l, m, r, mode); continue; }
             std::size_t m1, m2;
             if (nl >= nr) { m1 = l + (nl >> 1); m2 = lower_bound(m, r, a_[m1]); }
             else          { m2 = m + (nr >> 1); m1 = upper_bound(l, m, a_[m2]); }
@@ -583,9 +704,9 @@ private:
         T *dh = d, *dt = d + 2 * W - 1;
         for (std::size_t k = 0; k < W; ++k) {
             bool x = lt(*pr, *pl);
-            *dh++ = x ? *pr : *pl; pr += x; pl += !x;
+            *dh++ = *detail::sel(x, pr, pl); pr += x; pl += !x;
             bool y = lt(*tr, *tl);
-            *dt-- = y ? *tl : *tr; tl -= y; tr -= !y;
+            *dt-- = *detail::sel(y, tl, tr); tl -= y; tr -= !y;
         }
     }
     void parity_merge(const T* l, const T* r, std::size_t n, T* d) {
@@ -593,9 +714,9 @@ private:
         T *dh = d, *dt = d + 2 * n - 1;
         for (std::size_t k = 0; k < n; ++k) {
             bool x = lt(*pr, *pl);
-            *dh++ = x ? *pr : *pl; pr += x; pl += !x;
+            *dh++ = *detail::sel(x, pr, pl); pr += x; pl += !x;
             bool y = lt(*tr, *tl);
-            *dt-- = y ? *tl : *tr; tl -= y; tr -= !y;
+            *dt-- = *detail::sel(y, tl, tr); tl -= y; tr -= !y;
         }
     }
     // Trozo potencia de 2 (c <= LEAF): pares sin branch y niveles de parity
@@ -607,7 +728,7 @@ private:
         for (std::size_t i = 0; i < c; i += 2) {
             T x = p[i], y = p[i + 1];
             bool s = lt(y, x);
-            out[i] = s ? y : x; out[i + 1] = s ? x : y;
+            out[i] = *detail::sel(s, &y, &x); out[i + 1] = *detail::sel(s, &x, &y);
         }
         T *src = out, *dst = (out == p) ? buf_ : p;
         for (std::size_t w = 2; w < c; w <<= 1) {
@@ -699,7 +820,31 @@ private:
                 j = i + 1;
                 while (j < hi && !lt(a_[j], a_[j - 1])) ++j;
             }
-            if (j - i < RUN) { std::size_t e = std::min(hi, i + RUN); insertion(i, e); j = e; }
+            if (j - i < RUN) {
+#ifndef SOT_NO_ZONES
+                // Zona desordenada (v8-r2): 8 o más runs naturales seguidos de menos de 8
+                // elementos. Se extiende hasta el primer run de 16 o más y se ordena con el
+                // quicksort estable: queda como un solo run.
+                std::size_t e = j, tiny = 1;
+                while (TRIV && e < hi) {            // solo tipos triviales: con strings midió peor
+                    std::size_t f = e + 1;
+                    const std::size_t cap = std::min(hi, e + 16);   // alcanza con saber si llega a 16
+                    if (f < hi && lt(a_[f], a_[e])) { ++f; while (f < cap && lt(a_[f], a_[f - 1])) ++f; }
+                    else { while (f < cap && !lt(a_[f], a_[f - 1])) ++f; }
+                    if (f - e >= (tiny >= 8 ? 16u : 8u)) break;
+                    e = f; ++tiny;
+                }
+                if (tiny >= 8) {
+                    int budget = 0;
+                    for (std::size_t k = e - i; k; k >>= 1) ++budget;
+                    adaptive_ = false;
+                    quick_from(i, e, budget, false, T{}, nullptr, 0);
+                    adaptive_ = true;
+                    j = e;
+                } else
+#endif
+                { std::size_t e2 = std::min(hi, i + RUN); insertion(i, e2); j = e2; }
+            }
             if (top > 0) {
                 int p = powerloop(st[top - 1].s - lo, st[top - 1].len, j - i, nn);
                 while (top > 1 && st[top - 2].power > p) merge_top();

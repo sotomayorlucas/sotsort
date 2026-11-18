@@ -8,7 +8,7 @@
 \title{\textbf{SotSort}: a stable quicksort with a tunable buffer\\[3pt]
 \large Design summary and an experimental comparison (version 8-r)}
 \author{Lucas Sotomayor}
-\date{17 November 2026 --- technical report, draft}
+\date{17 November 2026 --- technical report, draft (revision 2)}
 \begin{document}
 \maketitle
 
@@ -17,11 +17,12 @@ SotSort is a stable comparison sort whose single code path runs with anything fr
 16\,KB buffer to a full $n$-element buffer. Its core is a stable quicksort that partitions blocks
 through the buffer and gathers them with rotations. This report summarises the design, states
 which parts are borrowed, and compares an implementation against blitsort, fluxsort, glidesort,
-driftsort, GrailSort and WikiSort. On one 2-vCPU machine, the constant-memory mode takes between
-0.29 and 0.76 of blitsort's time on random and duplicate-heavy 32- and 64-bit integers, and
-between 1.3 and 2.7 times blitsort's time on sorted, nearly sorted and sawtooth inputs. The
-implementation measured here is a reconstruction of a lost earlier version; all numbers are
-preliminary.
+driftsort, GrailSort and WikiSort. On one 2-vCPU machine, with 32- and 64-bit integers, the constant-memory mode takes
+between 0.19 and 0.75 of blitsort's time on 16 of 22 input classes and between 0.94 and
+1.09 on the other six. With a comparator that rules out the vector partition it is
+slower than blitsort on 7 of 11 classes, by up to 2.6 times on sorted input. The
+implementation measured here is a reconstruction of a lost earlier version; all numbers
+are preliminary.
 \end{abstract}
 
 \section{Scope and status}
@@ -62,20 +63,30 @@ the smaller of a user cap and a fraction of the available memory (including the 
 Allocation failure steps down one tier. The same procedures run in every tier with a different
 $B$; the proofs only need $B\ge 16$.
 
+\paragraph{Routing heuristics (new in 8-r).} Three cheap probes choose among procedures
+that are already proved correct, so they affect time only. (i) Before a buffered merge
+on the natural-run path, eight binary searches bound the number of side changes of the
+merge; long streaks get a galloping merge, otherwise a parity merge if both runs fit in
+the buffer. (ii) When there are few direction changes, 256 samples at pseudorandom
+positions tell whether runs have interleaved key ranges; if so, the input goes to the
+quicksort unless the number of runs is small. (iii) Eight or more consecutive natural
+runs shorter than eight elements are treated as a disordered zone and sorted by the
+quicksort as a single run. (ii) and (iii) apply to trivially copyable types only; with
+strings they measured worse.
+
 \paragraph{What is borrowed.} The fused triple-reversal rotation (blitsort), the equal-length
 parity merge (quadsort), the power criterion (powersort), galloping (Timsort), the lower-bound
 treatment of duplicates (pdqsort), the budget fallback (introsort), SymMerge (Kim and Kutzner),
 merge path for the parallel mode, and counting sort. \textbf{What I believe is mine}, subject to
 the caveat above: the unequal-length parity merge without bounds checks, the stable vector block
-partition, the unified constant-to-linear memory design with proofs parametrised by $B$, and a
-probe that picks between a parity merge and a galloping merge (new in 8-r).
+partition, the unified constant-to-linear memory design with proofs parametrised by $B$, and the
+three routing probes above.
 
 \section{Testing}\label{sec:tests}
 Differential tests against \texttt{std::stable\_sort}, with original indices as tags to check
-stability: 32- and 64-bit signed and unsigned integers, pairs, records of 16, 40 and 128 bytes,
-and strings; all three memory tiers; 1 to 4 threads. No failures in 6\,586 cases per build
-(AVX-512, AVX2, no SIMD, clang) on the final file, and in 24\,390 cases on the AVX-512 build
-before the last refactoring. AddressSanitizer, UBSan and ThreadSanitizer report nothing.
+stability, over 15 input families: 32- and 64-bit signed and unsigned integers, pairs, records of 16, 40 and 128 bytes,
+and strings; all three memory tiers; 1 to 4 threads. No failures in 19\,506 cases with AVX-512 and in 7\,410 cases per build with AVX2, no SIMD
+and clang, on the final file. AddressSanitizer, UBSan and ThreadSanitizer report nothing.
 Allocation failures were injected at every allocation point. Known gap: if the comparator
 throws, elements can be lost.
 
@@ -95,17 +106,17 @@ of length 63 with random keys.
  & \multicolumn{3}{c}{SotSort / blitsort} & SotSort / best of\\
 Input & u32 & u64 & key+index & Grail, Wiki (32\,B)\\
 \midrule
-random            & 0.64 & 0.73 & 1.04 & 0.69\\
-16 values         & 0.42 & 0.76 & 0.73 & 0.43\\
-$\sqrt n$ values  & 0.35 & 0.36 & 0.81 & 0.61\\
-Zipf              & 0.29 & 0.43 & 0.54 & 0.75\\
-sorted            & 2.65 & 1.54 & 2.56 & 0.42\\
-reversed          & 2.22 & 1.69 & 1.76 & 0.17\\
-1\% noise         & 1.63 & 1.33 & 1.58 & 0.69\\
-10\% random tail  & 1.49 & 1.48 & 1.50 & 1.16\\
-organ pipe        & 1.01 & 1.08 & 1.03 & 0.65\\
-runs of $\sqrt n$ & 2.28 & 1.81 & 2.01 & 0.91\\
-runs of 63        & 1.52 & 1.54 & 1.32 & 0.94\\
+random & 0.63 & 0.72 & 1.14 & 0.60\\
+16 values & 0.46 & 0.62 & 0.80 & 0.41\\
+$\sqrt n$ values & 0.19 & 0.49 & 0.86 & 0.48\\
+Zipf & 0.44 & 0.50 & 0.64 & 0.50\\
+sorted & 1.09 & 1.00 & 2.57 & 0.77\\
+reversed & 0.94 & 1.01 & 1.81 & 0.12\\
+1\% noise & 1.08 & 1.06 & 1.08 & 0.63\\
+10\% random tail & 0.67 & 0.75 & 1.50 & 0.82\\
+organ pipe & 0.58 & 0.70 & 1.13 & 0.69\\
+runs of $\sqrt n$ & 0.53 & 0.75 & 1.23 & 1.30\\
+runs of 63 & 0.42 & 0.48 & 0.78 & 0.75\\
 \bottomrule
 \end{tabular}
 \caption{Constant-memory sorts, $n=10^6$: time ratio, below 1 means SotSort is faster.
@@ -118,13 +129,15 @@ not support 32-byte records.}\label{tab:o1}
 \toprule
 Input (u64) & SotSort O(1) & SotSort fast & blitsort & fluxsort & glidesort & driftsort\\
 \midrule
-random            & 23.8 & 21.6 & 32.6 & 31.8 & 30.7 & 28.6\\
-Zipf              & 12.9 & 12.2 & 30.0 & 15.8 & 19.9 & 14.6\\
-1\% noise         & 15.1 & 11.9 & 11.3 & 24.4 & 30.9 & 21.5\\
-10\% random tail  & 11.0 & 11.4 &  7.4 &  6.7 &  4.9 &  6.7\\
-organ pipe        &  4.2 &  4.2 &  3.9 &  3.1 &  1.9 &  5.0\\
-runs of $\sqrt n$ & 59.3 & 30.4 & 32.8 & 25.3 & 11.2 & 43.3\\
-runs of 63        & 72.7 & 41.9 & 47.1 & 25.9 & 30.5 & 28.1\\
+random & 23.5 & 21.0 & 32.6 & 27.4 & 30.3 & 26.6\\
+Zipf & 13.7 & 13.6 & 27.5 & 16.3 & 28.3 & 13.4\\
+sorted & 0.3 & 0.3 & 0.3 & 0.3 & 0.6 & 0.4\\
+reversed & 0.6 & 0.6 & 0.6 & 0.7 & 0.9 & 0.8\\
+1\% noise & 10.8 & 12.1 & 10.2 & 24.2 & 30.5 & 20.1\\
+10\% random tail & 5.6 & 7.6 & 7.4 & 6.9 & 5.1 & 6.6\\
+organ pipe & 2.8 & 3.6 & 4.0 & 3.2 & 1.9 & 4.9\\
+runs of $\sqrt n$ & 25.4 & 22.3 & 33.7 & 26.8 & 12.9 & 44.0\\
+runs of 63 & 23.6 & 21.8 & 49.4 & 29.4 & 30.8 & 28.0\\
 \bottomrule
 \end{tabular}
 \caption{Milliseconds, $n=10^6$ 64-bit integers, one thread. ``fast'' uses a full buffer. The
@@ -132,13 +145,22 @@ rows with 16 and $\sqrt n$ values are omitted here because the fast mode answers
 counting sort.}\label{tab:abs}
 \end{table}
 
-\paragraph{Reading.} SotSort is ahead where the quicksort path and the vector partition apply,
-and behind on every input with long runs. glidesort is 2 to 2.7 times faster than the fast mode
-on runs of $\sqrt n$, on the random tail and on organ pipe. With a comparator that the vector
-partition cannot use (``key+index''), the advantage on random input disappears. For $n=10^7$
-random 64-bit integers the fast mode took 301\,ms, fluxsort 366, glidesort 388, blitsort 472 and
-the constant-memory mode 423. Extra memory at $n=10^7$ (80\,MB of data), as peak resident set
-growth: under 0.5\,MB in constant-memory mode and about 40\,MB in fast mode.
+\paragraph{Reading.} With 32- and 64-bit integers the constant-memory mode is ahead of
+blitsort or level with it on every input class measured; the closest are sorted,
+reversed and nearly sorted input (0.94 to 1.09). With a comparator that the vector
+partition cannot use (``key+index'') it loses on 7 of 11 classes, worst on sorted input
+(2.57), where blitsort's scan is faster. Against the linear-memory sorts, the fast mode
+is ahead on random input and behind glidesort on organ pipe, the random tail and runs of
+$\sqrt n$ (1.5 to 1.9 times for 64-bit integers). For $n=10^7$ random 64-bit integers
+the fast mode took 280\,ms, glidesort 362, the constant-memory mode 364, fluxsort 375,
+driftsort 392 and blitsort 463. Extra memory at $n=10^7$ (80\,MB of data), as peak
+resident set growth: under 0.5\,MB in constant-memory mode and about 40\,MB in fast mode.
+
+\paragraph{Effect of the routing heuristics.} Against the same code without them
+(interleaved runs, minimum of 7): 0.45 to 0.81 of the time on sorted data with a random
+zone, 0.26 to 0.88 on sorted runs of random keys, no change on random and
+duplicate-heavy input, and at most 10\% worse elsewhere, which is within noise. Buffer
+sizes from 4 to 128\,KB and leaf sizes from 32 to 256 made no measurable difference.
 
 \paragraph{Comparisons.} On random input every sort measured makes between 1.07 and 1.29 times
 $\lg n!$ comparisons; SotSort makes 1.11. This is not a differentiator.
@@ -158,9 +180,9 @@ One machine, virtualised and shared, with two cores; no hardware counters; no AR
 the comparison tables; the competitors were built with their default settings; glidesort and
 driftsort cross a C-to-Rust call boundary once per sort. The comparison against blitsort uses
 its default 512-element buffer, while SotSort's buffer is 16\,KB (2048 64-bit elements): both
-are constant, but they are not equal. The implementation is a reconstruction, and a
-run-detection heuristic that sends inputs with runs of 63 elements to the merge path is visibly
-wrong for that input.
+are constant, but they are not equal. The implementation is a reconstruction. The thresholds
+of the routing probes were tuned on this one machine, on some of the same inputs used for the
+comparison, so the structured-input rows are optimistic.
 
 \section{Availability}
 Code, tests, the benchmark harness and raw measurements accompany this report.

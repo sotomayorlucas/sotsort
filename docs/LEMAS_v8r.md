@@ -25,7 +25,8 @@ que ya cumplen la misma poscondición (parity merge de largos distintos y Merge-
 de runs naturales hay a lo sumo ⌈n/24⌉ − 1 mezclas, así que el total es O(n log n) en el peor
 caso. Con mezclas balanceadas de tamaño s ≥ 256 hay n/s por nivel: Σ (n/s)·8 lg s = O(n).
 
-Regla usada: galope si sw·8 ≤ a + b (rachas de largo medio ≥ 8 garantizadas); si no, parity merge.
+Regla usada: galope si sw·8 ≤ a + b (rachas de largo medio ≥ 8 garantizadas); si no, parity merge
+cuando a + b ≤ B, y el lazo clásico con saltos cuando no entran juntos. Solo tipos triviales.
 El umbral 8 y las 8 muestras se eligieron midiendo en una sola máquina.
 
 ## Lema B (buffers disjuntos en modo Completo con `follow_buffer`)
@@ -71,3 +72,13 @@ tramos se concatenan en orden. ∎
 
 Costo: W = n evaluaciones de P; movimientos ≤ 2n (igual que la versión secuencial) más los M − m_0
 de la fase 2. Camino crítico: n/P + (M − m_0) + máx f_i.
+
+## Lema Z (zonas desordenadas) y regla de ruta
+
+Enunciados y demostraciones completos: secciones 13.4 y 13.5 de `sotsort_demo.pdf`
+(Observación 13.3 y Lema 13.4). Resumen:
+- **Regla de ruta:** solo elige entre MergeNatural y QuickEstable, ambos correctos para toda
+  entrada. Cuesta 255 comparaciones y no escribe.
+- **Zonas:** la zona [i, e) es un intervalo todavía no apilado y coherente; QuickEstable la deja
+  ordenada y coherente, que es lo que el invariante de MergeNatural pide de un run. El recorrido
+  hacia adelante agrega a lo sumo 3n comparaciones.

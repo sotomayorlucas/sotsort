@@ -1,0 +1,386 @@
+%======================================================================
+\section{Modo rápido con memoria adaptable (v8)}\label{sec:rapido}
+
+Las secciones anteriores tratan \SotSort con memoria constante, que en la
+implementación de v8 sigue siendo \texttt{stable\_sort}. La versión 8 agrega dos
+entradas que usan memoria adicional si la hay: \Rapido (\texttt{stable\_sort\_fast}) y
+\PorClave (\texttt{stable\_sort\_by\_key}). Esta sección da su pseudocódigo y las
+demostraciones, al mismo nivel de detalle que las anteriores. $\Bsz_0$ denota el buffer
+propio de \SotSort (el $\Bsz$ de las secciones anteriores) y $\beta_m$ el presupuesto
+de memoria en bytes.
+
+\subsection{Supuestos adicionales y tamaño del buffer}
+
+\begin{supuesto}[Hilos]\label{sup:hilos}
+Si $P>1$, $\lt$ puede evaluarse desde varios hilos a la vez, y cada evaluación sigue
+cumpliendo el Supuesto~\ref{sup:orden}. Lo que un hilo escribe antes de una barrera (la
+espera \texttt{join} de C++) es visible para todos después de ella.
+\end{supuesto}
+\begin{supuesto}[Enteros]\label{sup:enteros}
+Si $T$ es un tipo entero y $\lt$ es $<$, el estado observable de un elemento es su
+valor: dos elementos con el mismo valor son indistinguibles. Para \Conteo, ``$A=\Omega$''
+significa que $A$ y $\Omega$ tienen la misma secuencia de valores.
+\end{supuesto}
+\begin{supuesto}[Reservas]\label{sup:reserva}
+\Reservar{$x, E$} o falla sin efectos, o entrega $E$ celdas disjuntas de $A$ y de toda
+otra memoria en uso. En Linux con \emph{overcommit}, una reserva puede salir bien y
+fallar recién al usarse; ese caso queda fuera del modelo.
+\end{supuesto}
+
+\begin{observacion}[Buffer más grande que $\Bsz_0$]\label{obs:bsz}
+Revisé cada aparición de $\Bsz$ en las demostraciones anteriores. Solo se usan cotas
+inferiores ($\Bsz\ge 16$ en la muestra del pivote y en la pila de \Part) y
+precondiciones de la forma ``el segmento entra en el buffer'', que con un $\Bsz$ mayor se
+cumplen igual o con más razón. La cota superior $\Bsz\le4096$ del
+Supuesto~\ref{sup:n} describía la implementación de v7 y no interviene en ninguna
+prueba. Por lo tanto los lemas y teoremas anteriores valen para todo $\Bsz\ge 16$, en
+particular para $\Bsz=E$. La hoja sigue siendo $\leaf=\min(128,\Bsz_0)\le\Bsz$.
+\end{observacion}
+
+\input{v8_algs}
+
+\subsection{Mezcla con galope}
+
+\begin{lema}[Galope]\label{lem:galope}
+Sea $Q$ monótono sobre $S[0..m)$: existe $k^*$ con $Q(S[i])\iff i<k^*$. Entonces
+\Galope{$S,Q$} devuelve $k^*$ y evalúa $Q$ a lo sumo $2\lfloor\log_2 k^*\rfloor+2$ veces
+si $k^*\ge1$, y una vez si $k^*=0$ (ninguna si $m=0$). En los dos casos son a lo sumo
+$2\lfloor\log_2(k^*{+}1)\rfloor+2$.
+\end{lema}
+\begin{proof}
+Si $m=0$ o $\neg Q(S[0])$, $k^*=0$. Si no, el lazo exponencial mantiene $Q(S[i])$, es
+decir, $i<k^*$; la variante es $m-i$, porque $i$ crece en cada vuelta. Al salir, o bien
+$i+\delta\ge m$ y entonces $k^*\le m=h$, o bien $\neg Q(S[i+\delta])$ y entonces
+$k^*\le i+\delta=h$. En los dos casos $k^*\in(i,h]$. Para $j\in(i,k^*)$ vale $Q(S[j])$, y
+en $j=k^*$ vale $j=h$ o $\neg Q(S[j])$: el menor $j$ de la línea final es $k^*$, y la
+búsqueda binaria lo encuentra porque la condición es monótona en $j$.
+
+\emph{Costo.} Las posiciones probadas por el lazo son $2^{t+1}-1$ para $t=0,1,\dots$;
+las que dan verdadero son las menores que $k^*$, o sea las $t$ con
+$2^{t+1}\le k^*$: a lo sumo $\lfloor\log_2k^*\rfloor$. Hay a lo sumo una prueba que da
+falso. El intervalo que queda para la búsqueda binaria tiene a lo sumo
+$\delta-1=2^{\lfloor\log_2 k^*\rfloor}-1$ posiciones, que se resuelven con a lo sumo
+$\lfloor\log_2k^*\rfloor$ evaluaciones. Con la evaluación de $S[0]$, el total es a lo
+sumo $2\lfloor\log_2k^*\rfloor+2$. La búsqueda desde el final de \MDer es simétrica,
+con posiciones $1, 2, 4, 8,\dots$ contadas desde el final, y tiene la misma cota.
+\end{proof}
+
+\begin{lema}[Monotonía]\label{lem:galmono}
+Si $X$ está ordenada, $x\mapsto y\nlt x$ es monótono sobre $X$ para todo $y$. Si $Y$
+está ordenada, $y\mapsto y\lt x$ es monótono sobre $Y$ para todo $x$.
+\end{lema}
+\begin{proof}
+Sean $j<i$. Como $X$ está ordenada, $X[j]\les X[i]$. Si $y\nlt X[i]$, es decir,
+$X[i]\les y$, la transitividad de $\les$ (Lema~\ref{lem:swo}(d)) da $X[j]\les y$. En
+el segundo caso, si $Y[i]\lt x$, el Lema~\ref{lem:swo}(c) con $Y[j]\les Y[i]$ da
+$Y[j]\lt x$.
+\end{proof}
+
+\begin{lema}[MergeIzq con galope]\label{lem:mizqg}
+Con $\mathit{galope}$ verdadero, \MIzq cumple la misma tripla del
+Lema~\ref{lem:mizq}, con a lo sumo $6(|X|+|Y|)$ comparaciones. Lo mismo vale para
+\MDer.
+\end{lema}
+\begin{proof}
+Se usa el invariante del Lema~\ref{lem:mizq}: $o=l+p+(q-m)$,
+$A[l..o)=\Mrg(X[0..p),Y[0..q{-}m))$, $\buf[p..a)=X[p..)$ y $A[q..r)=Y[q{-}m..)$. Como
+$o-q=p-a$, vale $o\le q$, con desigualdad estricta mientras $p<a$.
+
+Cada paso del lazo uno a uno es un paso de cabeza (Lema~\ref{lem:merge}(a)). En el
+galope sobre $X$, la cabeza de $Y$ es fija, $y=A[q]$, y por los
+Lemas~\ref{lem:galmono} y~\ref{lem:galope} los $k$ elementos copiados son exactamente
+los primeros de $X[p..)$ que cumplen $y\nlt x$. Para cada uno, el paso de cabeza elige
+$X$, porque no vale $Y[\cdot]\lt X[\cdot]$; así, la copia equivale a $k$ pasos de
+cabeza. Si después $p<a$, el elemento $X[p]$ no cumple el predicado: $A[q]\lt X[p]$. En
+el galope sobre $Y$ la cabeza de $X$ es fija, $x=\buf[p]$, y los $k'$ elementos
+copiados son los primeros de $Y[q{-}m..)$ estrictamente menores que $x$: son $k'$ pasos
+de cabeza que eligen $Y$. Como $A[q]\lt\buf[p]$, vale $k'\ge 1$. La copia de $Y$ va
+hacia adelante con $o<q$, así que no pisa nada sin leer.
+
+\emph{Terminación.} Cada vuelta del lazo externo hace al menos un paso uno a uno, y
+cada vuelta del galope o deja $p=a$ o copia $k'\ge1$ elementos: la variante
+$(a-p)+(r-q)$ decrece. Al salir, el final es el del Lema~\ref{lem:mizq}.
+
+\emph{Comparaciones.} En el lazo uno a uno, una por elemento escrito. Una vuelta del
+galope que hace las dos búsquedas cuesta, por el Lema~\ref{lem:galope}, a lo sumo
+$2\lfloor\log_2(k{+}1)\rfloor+2+2\lfloor\log_2(k'{+}1)\rfloor+2\le 2k+2k'+4\le 6(k+k')$,
+porque $k'\ge1$. Una vuelta que termina con $p=a$ copió $k\ge1$ elementos y cuesta a lo
+sumo $2k+2\le 4k$. Cada elemento se escribe una sola vez, así que el total es a lo sumo
+$6(|X|+|Y|)$. \MDer es simétrico, con los pasos de cola del Lema~\ref{lem:merge}(b).
+\end{proof}
+
+\begin{observacion}
+Con galope, en el Lema~\ref{lem:sym}(d) las mezclas de las hojas comparan a lo sumo 6
+veces por elemento en lugar de una: la cota pasa a
+$6s+\bigl(1+\frac{2s}{\Bsz}\bigr)(5\ell+2)$. Las cotas asintóticas del
+Lema~\ref{lem:respaldo}, del Lema~\ref{lem:natcost} y del Teorema~\ref{thm:cost} no
+cambian; solo sus constantes. El galope está apagado en el modo $O(1)$ para tipos
+aritméticos, que es como se midió y demostró v7.
+\end{observacion}
+
+\subsection{Conteo de enteros}
+
+\begin{lema}[Conteo]\label{lem:conteo}
+Bajo el Supuesto~\ref{sup:enteros},
+\[
+\hoare{A=A_0}{c\gets\Conteo(A,n,\beta_m)}{(\neg c\wedge A=A_0)\ \vee\ (c\wedge A=\Omega)},
+\]
+con $O(n+R)$ operaciones y $8(R+1)\le\beta_m$ bytes de contadores, que se liberan antes
+de volver.
+\end{lema}
+\begin{proof}
+Hasta la línea 5, \Conteo solo lee. La muestra es un subconjunto de $A$, así que su
+rango no supera a $R$: descartar por la muestra es descartar un caso con $R\ge2^{16}$.
+Si devuelve falso, $A=A_0$.
+
+Las diferencias $A[i]-\mu$ se calculan en aritmética sin signo de $w$ bits, módulo
+$2^w$. Como $0\le A[i]-\mu\le R\le 2^w-1$, el resultado es la diferencia verdadera y el
+índice está en $[0,R]$.
+
+Invariante del primer lazo: tras $i$ vueltas, $c[v]=\#\{j<i:\ A_0[j]=\mu+v\}$. Invariante
+del segundo: tras procesar los valores $0,\dots,v-1$, vale $o=\sum_{u<v}c[u]$ y $A[0..o)$
+es la secuencia no decreciente que repite cada $\mu+u$, para $u<v$, exactamente $c[u]$
+veces. Al final $o=n$ y $A$ es la única secuencia no decreciente con el multiconjunto de
+valores de $A_0$. $\Omega$ está ordenada, que para enteros con $<$ significa no
+decreciente, y tiene ese mismo multiconjunto: las dos secuencias de valores coinciden.
+Por el Supuesto~\ref{sup:enteros}, $A=\Omega$.
+\end{proof}
+
+\subsection{Modo paralelo}
+
+\begin{lema}[CoRango]\label{lem:corango}
+Sean $X[0..a)$ e $Y[0..b)$ ordenadas, $Z=\Mrg(X,Y)$, $0\le k\le a+b$, y sea $c(k)$ la
+cantidad de elementos de $X$ en $Z[0..k)$. Entonces \CoRango{$k,X,Y$} devuelve $c(k)$
+con a lo sumo $\lceil\log_2(\min(k,a)-\max(0,k-b)+1)\rceil$ comparaciones, $c$ es no
+decreciente, y para $k_0\le k_1$:
+\[
+Z[k_0..k_1)=\Mrg\big(X[c(k_0)..c(k_1)),\ Y[k_0{-}c(k_0)..k_1{-}c(k_1))\big).
+\]
+\end{lema}
+\begin{proof}
+Como $\Mrg$ preserva el orden interno de $X$ y de $Y$, los elementos de $X$ en
+$Z[0..k)$ son $X[0..c)$ y los de $Y$ son $Y[0..k{-}c)$, con $c=c(k)$. Por eso
+$\max(0,k-b)\le c\le\min(k,a)$.
+
+\emph{Afirmación.} Para $i\in[\max(0,k-b),\min(k,a))$ y $j=k-i$ (vale $1\le j\le b$):
+$i<c\iff Y[j-1]\nlt X[i]$.
+($\Rightarrow$) Si $i<c$, $X[i]$ está en $Z[0..k)$. Como $k-c<k-i=j$, $Y[j-1]$ no está
+en $Z[0..k)$, así que $X[i]$ precede a $Y[j-1]$ en $Z$, que está ordenada:
+$Y[j-1]\nlt X[i]$.
+($\Leftarrow$) Si $i\ge c$, $X[i]$ no está en $Z[0..k)$ y, como $k-c\ge j$, $Y[j-1]$
+sí. Entonces $Y[j-1]$ precede a $X[i]$ y, por estar ordenada, $Y[j-1]\les X[i]$. Si
+fueran equivalentes, la Definición~\ref{def:merge} pondría a $X[i]$ primero; luego
+$Y[j-1]\lt X[i]$.
+
+La búsqueda binaria mantiene $lo\le c\le hi$: si la condición vale, $i<c$ y
+$lo\gets i+1\le c$; si no, $i\ge c$ y $hi\gets i$. Los índices son válidos porque
+$lo\le i<hi$ da $0\le i<a$ y $1\le j\le b$. La variante es $hi-lo$, que al menos se
+reduce a la mitad, lo que da la cota de comparaciones. Al terminar, $lo=hi=c$.
+
+$c$ es no decreciente porque $Z[0..k)$ crece con $k$. La igualdad final es el
+Lema~\ref{lem:merge}(c): $Z[k_0..k_1)$ es un segmento de $Z$ y contiene exactamente esos
+elementos de $X$ y de $Y$.
+\end{proof}
+
+\begin{lema}[Paralelo]\label{lem:paralelo}
+Bajo los Supuestos~\ref{sup:hilos} y~\ref{sup:reserva}, con $P=2^p\le n$ y
+$\mathit{aux}$ de $n$ celdas:
+\[
+\hoare{A=A_0}{\Paralelo(A,n,\mathit{aux},P)}{A=\Omega}.
+\]
+Además, ninguna celda es escrita por dos hilos en la misma fase, y ninguna celda que un
+hilo lee en una fase es escrita por otro en esa fase.
+\end{lema}
+\begin{proof}
+\emph{Fase de trozos.} El hilo $i$ solo toca $A[d_i..d_{i+1})$ y
+$\mathit{aux}[d_i..d_{i+1})$, que son disjuntos entre hilos. Las llamadas a $\lt$ son
+seguras por el Supuesto~\ref{sup:hilos}. Por el Teorema~\ref{thm:main}, con
+$\Bsz=d_{i+1}-d_i$ (Observación~\ref{obs:bsz}) o con el buffer propio si el trozo es más
+chico, cada trozo queda ordenado y la transformación es OE dentro del trozo. Por el
+Lema~\ref{lem:oe}(c), es OE sobre todo el arreglo, que queda coherente.
+
+\emph{Invariante de rondas.} Al empezar la ronda de ancho $w$, con $\rho=P/w$ runs:
+$S$ contiene cada elemento de $A_0$ una vez, es coherente, y cada run
+$S[d_{jw}..d_{(j+1)w})$ está ordenado. Sea un par $X=S[lo..md)$, $Y=S[md..hi)$ y
+$Z=\Mrg(X,Y)$. Sus $g$ tareas usan los cortes $\lfloor Nv/g\rfloor$, $v=0,\dots,g$, que
+parten $[0,N)$ en tramos consecutivos. Por el Lema~\ref{lem:corango}, la tarea $v$
+escribe $D[lo{+}k_0..lo{+}k_1)=Z[k_0..k_1)$, y entre todas escriben
+$D[lo..hi)=Z$. $\Mrg$ es OE (Lema~\ref{lem:merge}(d)) y los pares son disjuntos, así que
+$D$ es coherente y sus runs de ancho $2w$ están ordenados. Al intercambiar, el invariante
+vale para $2w$.
+
+\emph{Carreras.} En el cálculo de cortes solo se lee $S$. En la mezcla, cada tarea
+escribe un tramo de $D$ disjunto de los demás y solo lee $S$, que nadie escribe en esa
+fase: $A$ y $\mathit{aux}$ son disjuntos (Supuesto~\ref{sup:reserva}). Las barreras
+separan las fases (Supuesto~\ref{sup:hilos}). La copia final escribe tramos disjuntos de
+$A$ y lee solo $S$. Que los cortes se calculen todos antes de mezclar es necesario:
+para tipos no triviales, mover deja el origen en un estado no especificado, y una
+búsqueda de corte concurrente leería esos valores.
+
+\emph{Final.} Tras $p$ rondas queda un solo run: $S[0..n)$ está ordenado y es coherente,
+así que $S=\Omega$ por el Lema~\ref{lem:coh}. Si $S\ne A$, la copia lo lleva a $A$
+preservando identidades (Supuesto~\ref{sup:ident}). Termina porque hay $p$ rondas y cada
+lazo es finito.
+\end{proof}
+
+\subsection{Corrección, memoria y cotas del modo rápido}
+
+\begin{teorema}[Corrección de \Rapido]\label{thm:rapido}
+Bajo los Supuestos~\ref{sup:orden}--\ref{sup:n} y~\ref{sup:reserva}, más el
+Supuesto~\ref{sup:hilos} si $P>1$ y el Supuesto~\ref{sup:enteros} si se usa \Conteo:
+\[
+\hoare{A=A_0,\ |A_0|=n}{\Rapido(A,n,O)}{A=\Omega}.
+\]
+\end{teorema}
+\begin{proof}
+\PlanF solo calcula números y no toca $A$. Si $n<2$ no hay nada que hacer. Si \Ordenado
+devuelve verdadero, $A$ queda ordenado y OE (Lema~\ref{lem:yaord}) y, por el
+Lema~\ref{lem:coh}, $A=\Omega$. Si \Conteo devuelve verdadero, $A=\Omega$ por el
+Lema~\ref{lem:conteo}; si devuelve falso, $A=A_0$. El lazo de reservas termina porque
+el modo baja estrictamente ($\mathsf{Completo}\to\mathsf{Bloques}$ con $E$ menor o
+$\mathsf{O1}$, y en $\mathsf{Bloques}$ $E$ se reduce a la mitad) y en $\mathsf{O1}$ se
+detiene; no modifica $A$. Con $P>1$, $P\le n/2^{17}$ por \PlanF y el
+Lema~\ref{lem:paralelo} da $A=\Omega$. En otro caso se ejecuta \SotSort con $\Bsz=E$ o
+$\Bsz=\Bsz_0$, y con galope si hay buffer: el Teorema~\ref{thm:main} vale por la
+Observación~\ref{obs:bsz} y el Lema~\ref{lem:mizqg}. \SotSort vuelve a llamar a
+\Ordenado, que ya devolvió falso sobre el mismo $A$ y vuelve a hacerlo sin modificarlo
+(Lema~\ref{lem:yaord}).
+\end{proof}
+
+\begin{teorema}[Memoria de \Rapido]\label{thm:rapmem}
+Además del arreglo, \Rapido usa:
+\begin{enumerate}[label=(\alph*),nosep]
+\item a lo sumo $\beta_m$ bytes reservados en todo momento: el buffer
+  $\mathit{aux}$, de $E\cdot\mathit{sizeof}(T)\le\beta_m$ bytes, o los contadores de
+  \Conteo, de $8(R+1)\le\beta_m$ bytes, nunca los dos a la vez;
+\item la memoria fija del Teorema~\ref{thm:mem} (buffer propio y pilas) por cada hilo
+  que ordena un trozo;
+\item $O(P)$ palabras para los bordes, los cortes y los hilos, más la pila que el
+  sistema le asigna a cada uno de los $P-1$ hilos adicionales.
+\end{enumerate}
+\end{teorema}
+\begin{proof}
+(a) En modo completo, $ns\le\beta_m$. En modo bloques, $E\le b=\lfloor\beta_m/s\rfloor$,
+así que $Es\le\beta_m$. En la caída escalonada, desde completo
+$E'\le\lfloor n/2\rfloor$ y desde bloques $E'\le E/2$: el tamaño solo baja. \Conteo
+verifica $8(R+1)\le\beta_m$ y libera los contadores antes de volver, y la reserva del
+buffer ocurre después. (b) y (c) son inspección del Algoritmo~\ref{alg:paralelo}.
+\end{proof}
+
+\noindent El presupuesto es $\beta_m=\min(O.\mathit{max},\ O.f\cdot D)$, con $D$ la
+memoria disponible \emph{en el momento de la consulta}. El teorema garantiza que no se
+pide más que eso; no garantiza que otros procesos no consuman la memoria restante
+mientras se ordena.
+
+\begin{teorema}[Cotas con buffer completo]\label{thm:rapcost}
+Si \SotSort se ejecuta con $\Bsz\ge n$, hace $O(n\log n)$ comparaciones y $O(n\log n)$
+movimientos en el peor caso, con galope o sin él. \Paralelo con $\mathit{aux}$ de $n$
+celdas hace en total $O(n\log n)$ comparaciones y movimientos.
+\end{teorema}
+\begin{proof}
+\emph{Camino \Quick.} Por el Lema~\ref{lem:prof}(b), los intervalos procesados que
+contienen a un elemento forman una cadena de longitud $O(\log n)$. En un intervalo de
+tamaño $\lambda\le n\le\Bsz$, cada \Part tiene $k=\lceil\lambda/\Bsz\rceil=1$ bloque: por
+el Lema~\ref{lem:partest}, $\lambda$ comparaciones, a lo sumo $3\lambda$ escrituras y
+ninguna rotación. Cada iteración hace a lo sumo dos particiones y elige un pivote con
+$O(\lambda^{1/3}\log\lambda)$ operaciones. Los intervalos de una misma profundidad son
+disjuntos, así que la suma es $O(n\log n)$. Las hojas son disjuntas y cuestan
+$O(\leaf\log\leaf)$ cada una (Lema~\ref{lem:hoja}).
+
+\emph{Respaldo y SymMerge.} En todo SymMerge de tamaño $s\le n\le\Bsz$ vale
+$\min(n_l,n_r)\le\Bsz$, así que la raíz es una hoja y no hay división: a lo sumo $3s$
+escrituras (Lema~\ref{lem:sym}(c)) y $6s+2\lceil\log_2(s{+}1)\rceil+1$ comparaciones
+(Lema~\ref{lem:mizqg} y las búsquedas del recorte). \Respaldo sobre un intervalo de
+tamaño $\lambda$ hace $O(\lambda)$ por nivel y $O(\log\lambda)$ niveles, más la inserción
+en bloques de 24; los intervalos de respaldo son disjuntos.
+
+\emph{Camino natural.} Por el Lema~\ref{lem:natcost}(b), cada elemento participa en
+$O(\log n)$ fusiones, cada una lineal por lo anterior; la detección y la inserción de
+runs cortos son $O(n)$.
+
+\emph{Paralelo.} Los trozos cuestan $O(\frac{n}{P}\log\frac{n}{P})$ cada uno por lo
+anterior. Cada una de las $\log_2P$ rondas hace $n$ movimientos, a lo sumo $n$
+comparaciones de mezcla y $2P$ llamadas a \CoRango de $O(\log n)$ comparaciones. Como
+$P\le n$, el total es $O(n\log n)$.
+\end{proof}
+
+\noindent En modo bloques valen las cotas del Teorema~\ref{thm:cost} con $\Bsz=E$:
+$O(n\log n\log(n/E))$ movimientos y $O(n\log n+\frac{n}{E}\log^2n)$ comparaciones.
+
+\begin{teorema}[Determinismo]\label{thm:det}
+\begin{enumerate}[label=(\alph*),nosep]
+\item El resultado es $\Omega$ cualquiera sea el plan, la semilla, la cantidad de hilos
+  y el resultado de las reservas.
+\item Si $O.\mathit{sondear}$ es falso, el plan depende solo de $n$,
+  $\mathit{sizeof}(T)$, $\Bsz_0$ y $O$, y además de la cantidad de hilos del hardware si
+  $O.\mathit{hilos}=0$.
+\item Fijado el plan, si ninguna reserva falla y los pivotes no son aleatorios, la
+  secuencia de operaciones de cada hilo es función de la entrada. Solo varía el
+  entrelazado en el tiempo entre hilos, que no cambia ningún valor leído.
+\end{enumerate}
+\end{teorema}
+\begin{proof}
+(a) Es el Teorema~\ref{thm:rapido}. (b) \PlanF solo llama a \Disp si
+$O.\mathit{sondear}$ es verdadero, y solo consulta el hardware si $O.\mathit{hilos}=0$.
+(c) Cada decisión depende de $A$, del plan y del generador, cuya semilla es
+$\sigma\oplus n$ (y una semilla fija por trozo). En \Paralelo, por el
+Lema~\ref{lem:paralelo}, cada tarea lee solo valores que no cambian durante su fase.
+\end{proof}
+
+\subsection{Orden por clave}
+
+Sea $\kappa$ una clave entera y $x\lt_\kappa y\iff\kappa(x)<\kappa(y)$, que es un orden
+débil estricto porque $<$ lo es sobre los enteros. $\Omega$ se toma respecto de
+$\lt_\kappa$, con etiquetas iguales a los índices.
+
+\begin{lema}[Indirecto empaquetado]\label{lem:indirecto}
+Sean $d_i=\kappa(A_0[i])-\mu\in[0,R]$, $r=\mathrm{bits}(R)$, $\iota=\mathrm{bits}(n-1)$
+con $r+\iota\le 64$, y $K[i]=d_i\cdot2^\iota+i$. Entonces los $K[i]$ son distintos,
+menores que $2^{64}$, y $K[i]<K[j]\iff A_0[i]\lts A_0[j]$. En consecuencia, si $K$ queda
+ordenado de forma creciente, $A[j]\gets A_0[K[j]\bmod 2^\iota]$ deja $A=\Omega$.
+\end{lema}
+\begin{proof}
+$i<2^\iota$ y $d_i<2^r$, así que $K[i]<2^{r+\iota}\le2^{64}$, y $K[i]\bmod2^\iota=i$,
+$\lfloor K[i]/2^\iota\rfloor=d_i$: la codificación es inyectiva. Como $i,j<2^\iota$,
+comparar $K$ es comparar lexicográficamente $(d,\text{índice})$:
+$K[i]<K[j]\iff d_i<d_j\vee(d_i=d_j\wedge i<j)$. Además $d_i<d_j\iff A_0[i]\lt_\kappa
+A_0[j]$ y $d_i=d_j\iff A_0[i]\eqv A_0[j]$, que con etiquetas iguales a los índices es la
+Definición~\ref{def:omega} de $\lts$. Las restas se hacen sin signo, módulo $2^w$, y son
+exactas porque $0\le\kappa-\mu\le R<2^w$. $K$ tiene valores distintos, así que su orden
+creciente es único; el recorrido final pone los elementos en orden creciente según
+$\lts$, que es $\Omega$. $\mathit{aux}$ es disjunto de $A$ y la copia preserva
+identidades.
+\end{proof}
+
+\begin{lema}[Radix por clave]\label{lem:radix}
+Sea $q$ tal que $R<2^{8q}$ y $\kappa_\delta(x)=(\kappa(x)-\mu)\bmod 2^{8(\delta+1)}$.
+Tras la pasada $\delta$ (contando desde 0), $S$ contiene cada elemento una vez, en orden
+creciente según el par $(\kappa_\delta(x),\etq(x))$. Al final, $A=\Omega$.
+\end{lema}
+\begin{proof}
+Antes de la primera pasada, $S=A_0$ está en orden creciente de etiqueta. Una pasada
+reparte por el byte $\delta$ con sumas de prefijos y un recorrido en orden de $S$: los
+elementos quedan en orden creciente de byte y, a igual byte, en el orden que tenían en
+$S$. Como $\kappa_\delta=\text{byte}_\delta\cdot2^{8\delta}+\kappa_{\delta-1}$, el
+nuevo orden es creciente según $(\text{byte}_\delta,\kappa_{\delta-1},\etq)$, es decir,
+según $(\kappa_\delta,\etq)$. Tras $q$ pasadas, $\kappa_{q-1}=\kappa-\mu$ porque
+$R<2^{8q}$, y ese orden es $\lts$. Si el resultado quedó en $\mathit{aux}$, se copia.
+\end{proof}
+
+\begin{teorema}[\PorClave]\label{thm:clave}
+Bajo los mismos supuestos que el Teorema~\ref{thm:rapido},
+\[\hoare{A=A_0}{\PorClave(A,n,\kappa,O)}{A=\Omega},\]
+y la memoria reservada en todo
+momento es a lo sumo $\beta_m$ bytes más $O(1)$ (los contadores del radix).
+\end{teorema}
+\begin{proof}
+Las ramas que delegan en \Rapido con $\lt_\kappa$ son correctas por el
+Teorema~\ref{thm:rapido}. Si las claves ya son no decrecientes, $A_0$ está ordenada y es
+coherente: $A_0=\Omega$. La rama indirecta es correcta por el Lema~\ref{lem:indirecto}
+y el Teorema~\ref{thm:rapido} aplicado a $K$; la de radix, por el
+Lema~\ref{lem:radix}. Memoria: la rama indirecta tiene a la vez $K$ ($8n$ bytes),
+$\mathit{aux}$ ($n\,\mathit{sizeof}(T)$) y lo que use \Rapido sobre $K$, acotado por su
+tope de $8n$ (Teorema~\ref{thm:rapmem}); en total $n(\mathit{sizeof}(T)+16)\le\beta_m$,
+que la rama verifica. La de radix usa $\mathit{aux}$, que entra porque el modo es
+completo, y $3\cdot256$ contadores.
+\end{proof}

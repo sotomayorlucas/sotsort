@@ -34,22 +34,27 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 
 | Input | u32 | u64 | key+index (comparator) |
 |---|---|---|---|
-| random | 0.64 | 0.73 | 1.04 |
-| 16 distinct values | 0.42 | 0.76 | 0.73 |
-| √n distinct values | 0.35 | 0.36 | 0.81 |
-| Zipf | 0.29 | 0.43 | 0.54 |
-| sorted | 2.65 | 1.54 | 2.56 |
-| 1% noise | 1.63 | 1.33 | 1.58 |
-| 10% random tail | 1.49 | 1.48 | 1.50 |
-| organ pipe | 1.01 | 1.08 | 1.03 |
-| sawtooth, runs of √n | 2.28 | 1.81 | 2.01 |
+| random | 0.63 | 0.72 | 1.14 |
+| 16 values | 0.46 | 0.62 | 0.80 |
+| √n values | 0.19 | 0.49 | 0.86 |
+| Zipf | 0.44 | 0.50 | 0.64 |
+| sorted | 1.09 | 1.00 | 2.57 |
+| reversed | 0.94 | 1.01 | 1.81 |
+| 1% noise | 1.08 | 1.06 | 1.08 |
+| 10% random tail | 0.67 | 0.75 | 1.50 |
+| organ pipe | 0.58 | 0.70 | 1.13 |
+| runs of √n | 0.53 | 0.75 | 1.23 |
+| runs of 63 | 0.42 | 0.48 | 0.78 |
 
-- It wins on random and duplicate-heavy integer inputs and **loses by 1.3–2.7× on structured
-  inputs** (sorted, nearly sorted, sawtooth).
+- With 32- and 64-bit integers it is ahead of blitsort on 16 of 22 input classes (0.19–0.75) and
+  level on the other six (0.94–1.09). With a comparator that rules out the vector partition it
+  **loses on 7 of 11 classes, by up to 2.6× on sorted input**.
 - Against O(n)-memory stable sorts (fluxsort, glidesort, driftsort), the fast mode with one thread
-  is ahead on random u32/u64 (0.69–0.76 of the best of them) and behind on structured inputs
-  (up to 2.7× slower than glidesort on sawtooth). The "16 values" and "√n values" rows of the fast
-  mode use the counting shortcut, so they are not a like-for-like comparison.
+  is ahead on random u32/u64 (0.70–0.79 of the best of them) and behind glidesort on organ pipe,
+  a random tail and sawtooth input (1.4–1.9× for u64). The "16 values" and "√n values" rows of the
+  fast mode use the counting shortcut, so they are not a like-for-like comparison.
+- The routing heuristics were tuned on this machine and on some of these same inputs, so the
+  structured-input rows are optimistic.
 - Extra memory for 10^7 u64 (80 MB of data): under 0.5 MB in O(1) mode; about 40 MB in fast mode.
 - McIlroy's adversary with random pre-frozen positions: at most 1.14·n·log2(n) comparisons
   (n = 10^5 and 10^6). This is evidence, not a proof.
@@ -72,7 +77,8 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 - `tests/` — differential tests against `std::stable_sort`, injected allocation failures,
   adversaries. `make test`, `make sanitize`, `make adversary`.
 - `bench/` — comparison harness. `bench/build.sh` fetches the third-party sorts.
-- `docs/` — technical report (English), reconstruction notes, OOO study and lemmas (Spanish).
+- `docs/` — technical report (English); proofs, addendum, reconstruction notes, OOO study and
+  lemmas (Spanish), with LaTeX sources in `docs/tex/`.
 
 ## Credits
 

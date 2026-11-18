@@ -1,0 +1,151 @@
+% Algoritmos del modo rápido (v8). Se incluye desde sotsort.tex y sotsort_demo.tex.
+% Requiere: \lt, \nlt, \Mrg, \buf, \Bsz y las funciones \SotSort, \Ordenado,
+% \PocosGiros, \Aleatorio, \MIzq, \MDer, \PlanF, \Rapido, \Galope, \Conteo,
+% \CoRango, \Paralelo, \PorClave, \Reservar, \Disp.
+
+\begin{algorithm}[H]
+\caption{Modo rápido (v8): plan de memoria y punto de entrada}\label{alg:plan}
+\KwIn{$A[0..n)$, comparador $\lt$, opciones $O$: tope $O.\mathit{max}$ en bytes, fracción $O.f$ ($0{,}5$), $O.\mathit{sondear}$, $O.\mathit{hilos}$ ($0$ = automático), $O.\mathit{atajos}$}
+\Fn(\tcp*[h]{$s=\mathit{sizeof}(T)$; $\Bsz_0$: buffer propio, unos 16\,KB}){\PlanF{$n, s, O$}}{
+  $\beta_m\gets O.\mathit{max}$\;
+  \If(\tcp*[f]{solo si el buffer pasaría de 1\,MB}){$ns>2^{20}$ \KwAnd $O.\mathit{sondear}$}{
+    $D\gets$ \Disp{}\tcp*{$\min(\text{MemAvailable},\ \text{margen del cgroup})$; $0$ si no se sabe}
+    $\beta_m\gets\min\big(\beta_m,\ D>0\ ?\ \lfloor O.f\cdot D\rfloor : 256\,\mathrm{MB}\big)$\;
+  }
+  $(\mathit{modo},E,P)\gets(\mathsf{O1},0,1)$\;
+  \lIf{$n\le\Bsz_0$}{\KwRet $(\mathit{modo},E,P,\beta_m)$}
+  \eIf{$ns\le\beta_m$}{$(\mathit{modo},E)\gets(\mathsf{Completo},\,n)$\;}{
+    $b\gets\lfloor\beta_m/s\rfloor$;\quad $E'\gets$ mayor potencia de 2 que no supera $b$\;
+    \lIf{$E'>\Bsz_0$ \KwAnd $b\ge 2\Bsz_0$}{$(\mathit{modo},E)\gets(\mathsf{Bloques},\,E')$}
+  }
+  \If{$\mathit{modo}=\mathsf{Completo}$ \KwAnd $O.\mathit{hilos}\ne 1$}{
+    $h\gets O.\mathit{hilos}$, o los hilos del hardware si es $0$\;
+    $P\gets$ mayor potencia de 2 con $P\le h$ y $P\le\max(1,\lfloor n/2^{17}\rfloor)$\;
+  }
+  \KwRet $(\mathit{modo},E,P,\beta_m)$\;
+}
+\BlankLine
+\Fn{\Rapido{$A, n, O$}}{
+  $\pi\gets$ \PlanF{$n,\ \mathit{sizeof}(T),\ O$}\;
+  \lIf{$n<2$}{\KwRet}
+  semilla de \Aleatorio${}\gets\sigma\oplus n$, salvo que $O$ pida pivotes aleatorios\;
+  \lIf{\Ordenado{$0,n$}}{\KwRet}
+  \lIf{$T$ entero, ${\lt}={<}$, $O.\mathit{atajos}$ \KwAnd \Conteo{$A, n, \pi.\beta_m$}}{\KwRet}
+  \While(\tcp*[f]{caída escalonada}){$\pi.\mathit{modo}\ne\mathsf{O1}$ \KwAnd \KwNot \Reservar{$\mathit{aux},\ \pi.E$}}{
+    $e\gets(\pi.\mathit{modo}=\mathsf{Completo}\ ?\ \lfloor n/2\rfloor : \pi.E/2)$;\quad $E'\gets$ mayor potencia de 2 que no supera $e$;\quad $\pi.P\gets 1$\;
+    \leIf{$E'>\Bsz_0$}{$(\pi.\mathit{modo},\pi.E)\gets(\mathsf{Bloques},E')$}{$(\pi.\mathit{modo},\pi.E)\gets(\mathsf{O1},0)$}
+  }
+  \lIf{$\pi.\mathit{modo}=\mathsf{Completo}$ \KwAnd $\pi.P>1$}{\Paralelo{$A, n, \mathit{aux}, \pi.P$}; \KwRet}
+  \lIf{$\pi.\mathit{modo}\ne\mathsf{O1}$}{$\buf\gets\mathit{aux}$;\ $\Bsz\gets\pi.E$;\ $\mathit{galope}\gets\mathbf{true}$}
+  \SotSort{$A, n$}\tcp*{el Algoritmo~\ref{alg:main}, con ese $\buf$ y ese $\Bsz$}
+}
+\end{algorithm}
+
+\noindent $\sigma$ es una constante fija. \Reservar pide memoria sin lanzar
+excepciones: devuelve falso si no la obtiene. Los buffers de 4\,MB o más se piden
+alineados a 2\,MB y con \texttt{MADV\_HUGEPAGE} (páginas grandes, si el núcleo las da).
+
+\begin{algorithm}[H]
+\caption{Mezcla con buffer y galope (v8)}\label{alg:galope}
+\Fn(\tcp*[h]{$m-l\le\Bsz$;\ $M_G=7$}){\MIzq{$l, m, r$}}{
+  $a\gets m-l$;\quad $\buf[0..a)\gets A[l..m)$;\quad $p\gets 0$;\ $q\gets m$;\ $o\gets l$\;
+  \lIf{\KwNot $\mathit{galope}$}{lazo clásico: un paso de cabeza por comparación; \KwRet}
+  \While{$p<a$ \KwAnd $q<r$}{
+    $c_x\gets 0$;\quad $c_y\gets 0$\tcp*{victorias seguidas de cada lado}
+    \While(\tcp*[f]{uno a uno}){$p<a$ \KwAnd $q<r$ \KwAnd $\max(c_x,c_y)<M_G$}{
+      \leIf{$A[q]\lt\buf[p]$}{$A[o{+}{+}]\gets A[q{+}{+}]$; $c_y\gets c_y{+}1$; $c_x\gets 0$}{$A[o{+}{+}]\gets\buf[p{+}{+}]$; $c_x\gets c_x{+}1$; $c_y\gets 0$}
+    }
+    \While(\tcp*[f]{galope}){$p<a$ \KwAnd $q<r$}{
+      $k\gets$ \Galope{$\buf[p..a),\ x\mapsto A[q]\nlt x$}\tcp*{lo que no supera a la cabeza de $Y$}
+      $A[o..o{+}k)\gets\buf[p..p{+}k)$;\quad $o\gets o{+}k$;\quad $p\gets p{+}k$\;
+      \lIf{$p=a$}{\KwBreak}
+      $k'\gets$ \Galope{$A[q..r),\ y\mapsto y\lt\buf[p]$}\tcp*{lo estrictamente menor que la cabeza de $X$}
+      $A[o..o{+}k')\gets A[q..q{+}k')$;\quad $o\gets o{+}k'$;\quad $q\gets q{+}k'$\tcp*{$o<q$: hacia adelante}
+      \lIf{$k<M_G$ \KwAnd $k'<M_G$}{\KwBreak}
+    }
+  }
+  $A[o..o{+}a{-}p)\gets\buf[p..a)$\;
+}
+\BlankLine
+\Fn(\tcp*[h]{$r-m\le\Bsz$}){\MDer{$l, m, r$}}{
+  simétrico: la derecha va al buffer, se mezcla desde el final y \Galope busca desde el final\;
+}
+\BlankLine
+\Fn(\tcp*[h]{$Q$ monótono: verdadero y después falso}){\Galope{$S[0..m),\ Q$}}{
+  \lIf{$m=0$ \KwOr \KwNot $Q(S[0])$}{\KwRet $0$}
+  $i\gets 0$;\quad $\delta\gets 1$\;
+  \While(\tcp*[f]{prueba $S[1], S[3], S[7], S[15],\dots$}){$i+\delta<m$ \KwAnd $Q(S[i+\delta])$}{$i\gets i+\delta$;\quad $\delta\gets 2\delta$\;}
+  $h\gets\min(i+\delta,\ m)$\;
+  \KwRet el menor $j\in(i,h]$ con $j=h$ o $\neg Q(S[j])$, por búsqueda binaria\;
+}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{Conteo de enteros y modo paralelo con \emph{merge path} (v8)}\label{alg:paralelo}
+\Fn(\tcp*[h]{$T$ entero y ${\lt}={<}$}){\Conteo{$A, n, \beta_m$}}{
+  \lIf{$n<4096$}{\KwRet $\mathbf{false}$}
+  \lIf{el rango de $A[0], A[s], A[2s],\dots$ con $s=\lfloor n/1024\rfloor$ es $\ge 2^{16}$}{\KwRet $\mathbf{false}$}
+  $\mu\gets\min A$;\quad $R\gets\max A-\mu$\;
+  \lIf{$R\ge 2^{16}$ \KwOr $8(R+1)>\beta_m$}{\KwRet $\mathbf{false}$}
+  $c[0..R]\gets 0$;\quad \lFor{$i\gets 0$ \KwTo $n-1$}{$c[A[i]-\mu]\gets c[A[i]-\mu]+1$}
+  $o\gets 0$;\quad \lFor{$v\gets 0$ \KwTo $R$}{$A[o..o{+}c[v])\gets\mu+v$;\ $o\gets o+c[v]$}
+  \KwRet $\mathbf{true}$\;
+}
+\BlankLine
+\Fn(\tcp*[h]{cuántos de $X$ hay entre los primeros $k$ de $\Mrg(X,Y)$}){\CoRango{$k,\ X[0..a),\ Y[0..b)$}}{
+  $lo\gets\max(0,k-b)$;\quad $hi\gets\min(k,a)$\;
+  \While{$lo<hi$}{
+    $i\gets\lfloor(lo+hi)/2\rfloor$;\quad $j\gets k-i$\;
+    \leIf(\tcp*[f]{$X[i]$ va antes que $Y[j-1]$}){$Y[j-1]\nlt X[i]$}{$lo\gets i+1$}{$hi\gets i$}
+  }
+  \KwRet $lo$\;
+}
+\BlankLine
+\Fn(\tcp*[h]{$P$ potencia de 2; $\mathit{aux}$ de $n$ elementos}){\Paralelo{$A, n, \mathit{aux}, P$}}{
+  $d_i\gets\lfloor ni/P\rfloor$ para $i=0,\dots,P$\;
+  \textbf{en paralelo} para $i<P$: \SotSort sobre $A[d_i..d_{i+1})$ con $\buf=\mathit{aux}[d_i..d_{i+1})$ y galope\;
+  $S\gets A$;\quad $D\gets\mathit{aux}$;\quad $w\gets 1$\;
+  \For{$\rho\gets P, P/2,\dots,2$}{
+    $g\gets 2P/\rho$\tcp*{tareas por cada par de runs}
+    \ForEach(\tcp*[f]{par $u=\lfloor t/g\rfloor$, parte $v=t\bmod g$}){tarea $t<P$}{
+      $lo\gets d_{2uw}$;\ $md\gets d_{(2u+1)w}$;\ $hi\gets d_{(2u+2)w}$;\ $N\gets hi-lo$\;
+      $k_0\gets\lfloor Nv/g\rfloor$;\ $k_1\gets\lfloor N(v{+}1)/g\rfloor$;\ $i_\ell\gets$ \CoRango{$k_\ell,\ S[lo..md),\ S[md..hi)$} para $\ell=0,1$\;
+    }
+    \textbf{en paralelo} para cada tarea: mezclar $S[lo{+}i_0..lo{+}i_1)$ con $S[md{+}k_0{-}i_0..md{+}k_1{-}i_1)$ en $D[lo{+}k_0..lo{+}k_1)$\;
+    intercambiar $S$ y $D$;\quad $w\gets 2w$\;
+  }
+  \lIf{$S\ne A$}{\textbf{en paralelo}, copiar $S$ a $A$ por trozos}
+}
+\end{algorithm}
+
+\noindent Los cortes de cada ronda se calculan todos antes de mezclar: con tipos que
+no se copian byte a byte, mover vacía el origen, y otro hilo podría estar buscando su
+corte sobre esos mismos elementos (ThreadSanitizer encontró esa carrera en una
+versión anterior del código).
+
+\begin{algorithm}[H]
+\caption{Orden estable por clave entera (v8)}\label{alg:clave}
+\KwIn{$A[0..n)$ y una clave entera $\kappa$; el orden es $x\lt_\kappa y\iff\kappa(x)<\kappa(y)$}
+\Fn{\PorClave{$A, n, \kappa, O$}}{
+  $\pi\gets$ \PlanF{$n,\ \mathit{sizeof}(T),\ O$}\;
+  \If{$T$ no se copia byte a byte \KwOr $n<4096$ \KwOr $\pi.\mathit{modo}\ne\mathsf{Completo}$}{\Rapido{$A, n, O$} con $\lt_\kappa$;\quad \KwRet\;}
+  \lIf{$\kappa(A[0]),\dots,\kappa(A[n-1])$ es no decreciente}{\KwRet}
+  \lIf{\PocosGiros{$n$}}{\Rapido{$A, n, O$} con $\lt_\kappa$; \KwRet}
+  $\mu\gets\min_i\kappa(A[i])$;\quad $R\gets\max_i\kappa(A[i])-\mu$;\quad $r\gets\mathrm{bits}(R)$;\quad $\iota\gets\mathrm{bits}(n-1)$\;
+  \If(\tcp*[f]{indirecto empaquetado}){$\mathit{sizeof}(T)\ge 32$ \KwAnd $r+\iota\le 64$ \KwAnd $n(\mathit{sizeof}(T)+16)\le\pi.\beta_m$}{
+    $K[i]\gets(\kappa(A[i])-\mu)\cdot 2^{\iota}+i$ para $i<n$\tcp*{enteros de 64 bits distintos}
+    \Rapido{$K, n$} con $<$, sin sondeo y con tope de $8n$ bytes\;
+    $\mathit{aux}[j]\gets A[K[j]\bmod 2^{\iota}]$ para $j<n$;\quad $A\gets\mathit{aux}$;\quad \KwRet\;
+  }
+  \If(\tcp*[f]{radix LSD sobre los registros}){$R<2^{24}$}{
+    $q\gets 1$, $2$ o $3$ según $R<2^8$, $2^{16}$ o $2^{24}$;\quad $S\gets A$;\quad $D\gets\mathit{aux}$\;
+    \For{$\delta\gets 0$ \KwTo $q-1$}{distribuir $S$ en $D$, en orden, por el byte $\delta$ de $\kappa(x)-\mu$;\quad intercambiar $S$ y $D$\;}
+    \lIf{$S\ne A$}{$A\gets S$}
+    \KwRet\;
+  }
+  \Rapido{$A, n, O$} con $\lt_\kappa$\;
+}
+\end{algorithm}
+
+\noindent $\mathrm{bits}(x)$ es la cantidad de bits de $x$ ($\mathrm{bits}(0)=0$). Si una
+reserva falla, se pasa a la rama siguiente.

@@ -70,48 +70,46 @@ factor log n de las pilas, que ya existe en la versión secuencial.
 - Buffers disjuntos en modo Completo: ahora es el lema B de `LEMAS_v8r.md` (a mano, sin mecanizar).
 - Ausencia de carreras en el planificador: todo su estado se toca con el mutex tomado.
 
-**Verificado solo por pruebas:** 933 casos contra `std::stable_sort` con etiquetas, 2 a 5 hilos,
+**Verificado solo por pruebas:** 466 casos (más 186 con ThreadSanitizer y 373 con ASan+UBSan) contra `std::stable_sort` con etiquetas, 2 a 5 hilos,
 grano de 64 a 4096, los tres modos de memoria; ThreadSanitizer y ASan+UBSan sin avisos.
 **Comparador que lanza dentro de una tarea:** 60 corridas con strings, 2 a 4 hilos, ASan+UBSan y TSan: sin cuelgues ni errores de memoria (se pueden perder elementos, como en el modo secuencial).
 **Sin verificar:** más de 2 núcleos reales.
 
-## 5. Resultados (P = 2, mediana de 5 a 7; segunda versión del prototipo)
+## 5. Resultados (P = 2, mediana de 5 a 7; segunda versión del prototipo, corrida final)
 
 Segunda versión: partición paralela de la raíz (lema R en `LEMAS_v8r.md`), delegación sin repetir
 recorridos y conteo de giros en paralelo. Cociente OOO / paralelo v8-r (menos de 1 gana OOO):
 
 | Entrada | u64, 10^6 | u64, 10^7 | 128 B, 250 mil | 128 B, 10^6 | strings, 250 mil | strings, 10^6 |
 |---|---|---|---|---|---|---|
-| aleatoria | 0,82 | 0,94 | 0,68 | 1,13 | 0,60 | 0,93 |
-| 16 valores | 0,63 | 0,89 | 0,70 | 1,08 | 0,61 | 1,10 |
-| √n valores | 0,80 | 1,03 | 0,67 | 1,06 | 0,57 | 1,04 |
-| mitad un solo valor | 0,91 | 0,83 | 0,72 | 0,89 | 0,75 | 0,89 |
-| mitades desbalanceadas | 0,68 | 0,77 | 0,77 | 1,04 | 0,65 | 0,65 |
-| 1% de ruido (delegado) | 1,07 | 0,97 | 1,01 | 1,05 | 1,09 | 1,07 |
-| organ pipe (delegado) | 1,25 | 1,18 | 1,00 | 1,10 | 1,03 | 1,11 |
+| aleatoria | 0,85 | 0,83 | 0,72 | 1,04 | 0,59 | 0,78 |
+| 16 valores | 0,67 | 0,77 | 0,69 | 1,09 | 0,76 | 1,10 |
+| √n valores | 0,69 | 0,84 | 0,71 | 1,15 | 0,58 | 1,04 |
+| mitad un solo valor | 0,83 | 0,69 | 0,72 | 0,88 | 0,69 | 0,94 |
+| mitades desbalanceadas | 0,56 | 0,66 | 0,78 | 0,96 | 0,63 | 0,58 |
+| 1% de ruido (delegado) | 1,01 | 1,05 | 0,98 | 0,97 | 0,98 | 1,11 |
+| organ pipe (delegado) | 1,17 | 1,28 | 1,00 | 1,06 | 0,92 | 0,94 |
 
 - En las columnas de 250 mil el paralelo de v8 no se activa (exige n ≥ 2^18): ahí OOO se compara
   contra una ejecución de un hilo.
-- Aceleración de OOO sobre un hilo en las entradas que van por tareas: 1,24× a 1,93×.
-- Efecto de la raíz paralela (OOO con raíz / OOO sin raíz): entre 0,79 y 1,16; mediana cerca de
-  0,96. Ayuda con registros de 128 B (0,87 a 0,95) y casi nada con u64 de 10^6.
-- Planificador: 3 a 249 tareas por corrida. En la primera versión la cola máxima fue 81 y no hubo rechazos; en esta no se registró. Con la raíz paralela
-  el ocio bajó de 20–60 ms a menos de 6 ms en u64 de 10^7.
+- Aceleración de OOO sobre un hilo en las entradas que van por tareas: 1,27× a 2,43×.
+- Efecto de la raíz paralela (OOO con raíz / OOO sin raíz): entre 0,77 y 1,10; mediana 0,95.
+- Planificador: 3 a 249 tareas por corrida.
 - Comparaciones por elemento (n = 10^6, comparador contado): aleatoria 20,52 secuencial, 20,53
-  paralelo, 21,32 OOO; 16 valores 5,33 / 6,36 / 6,26. El exceso de OOO es el conteo de giros, que
-  en paralelo ya no corta temprano.
-- Entradas delegadas: 0 a 25% más lentas que el paralelo, por ese mismo conteo.
+  paralelo, 20,70 OOO; 16 valores 5,33 / 6,36 / 5,64. El conteo de giros en paralelo ahora corta
+  temprano.
+- Entradas delegadas: entre 8% más rápidas y 28% más lentas que el paralelo.
 - El ruido entre corridas idénticas en esta máquina llegó a ±15%: diferencias menores no dicen nada.
 - No medido: movimientos, fallos de caché, ancho de banda, falsa compartición, P > 2.
 
 ## 6. Decisión
 
 - **Planificación por tareas del quicksort + raíz paralela: implementada; queda experimental.**
-  Gana con claridad donde v8 no paraleliza (n < 2^18) y con entradas desbalanceadas (0,65 a 0,77).
-  En el resto queda dentro del ruido, entre 0,83 y 1,13. No reemplaza al modo paralelo: no hay
-  una mejora reproducible en la región principal y solo se pudo medir con 2 núcleos.
+  Gana con claridad donde v8 no paraleliza (n < 2^18: 0,58 a 0,78). Con 10^6 o más queda entre
+  0,56 y 1,15: gana en u64 (0,56 a 0,85) y con entradas desbalanceadas, y pierde hasta 15% con
+  registros de 128 B. No reemplaza al modo paralelo: solo se pudo medir con 2 núcleos.
 - **Candidato concreto a incorporar:** usar tareas cuando n < 2^18 (hoy v8 corre con un hilo).
-  Es la única región con ventaja grande y consistente (0,57 a 0,91).
+  Es la única región con ventaja grande y consistente (0,58 a 0,78).
 - **Partición estable fuera de orden por bloques y rotaciones: descartada sin prototipo.** El
   paralelismo interno es O(lg(λ/B)) y el camino crítico lo fija la rotación de la raíz.
 - **Pendiente para decidir de verdad:** medir en 8 núcleos o más; partición paralela también en

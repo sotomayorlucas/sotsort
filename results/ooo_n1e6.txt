@@ -1,31 +1,31 @@
-u64   rand       1000000 sec=   23.2 par=   16.8 ooo=   14.0 ooo+raiz=   13.7 | ooo/par=0.83 ooo+raiz/par=0.82 acel=1.69 [ooo tareas=24 ocio=0.8ms raiz=1.1ms] ok
-r128  rand        250000 sec=   44.6 par=   45.0 ooo=   33.2 ooo+raiz=   30.8 | ooo/par=0.74 ooo+raiz/par=0.68 acel=1.45 [ooo tareas=6 ocio=7.4ms raiz=0.0ms] ok
-str   rand        250000 sec=   97.6 par=   97.2 ooo=   57.8 ooo+raiz=   58.2 | ooo/par=0.59 ooo+raiz/par=0.60 acel=1.68 [ooo tareas=7 ocio=10.2ms raiz=0.0ms] ok
-u64   dup16      1000000 sec=    5.2 par=    6.3 ooo=    4.3 ooo+raiz=    4.0 | ooo/par=0.68 ooo+raiz/par=0.63 acel=1.30 [ooo tareas=13 ocio=0.0ms raiz=1.2ms] ok
-r128  dup16       250000 sec=   23.2 par=   23.3 ooo=   16.5 ooo+raiz=   16.2 | ooo/par=0.71 ooo+raiz/par=0.70 acel=1.43 [ooo tareas=5 ocio=5.1ms raiz=0.0ms] ok
-str   dup16       250000 sec=   33.8 par=   35.1 ooo=   21.8 ooo+raiz=   21.4 | ooo/par=0.62 ooo+raiz/par=0.61 acel=1.57 [ooo tareas=7 ocio=6.4ms raiz=0.0ms] ok
-u64   sqrtn      1000000 sec=    8.3 par=    7.4 ooo=    5.9 ooo+raiz=    5.9 | ooo/par=0.80 ooo+raiz/par=0.80 acel=1.41 [ooo tareas=27 ocio=0.1ms raiz=1.1ms] ok
-r128  sqrtn       250000 sec=   36.8 par=   38.5 ooo=   28.6 ooo+raiz=   25.8 | ooo/par=0.74 ooo+raiz/par=0.67 acel=1.43 [ooo tareas=5 ocio=7.7ms raiz=0.0ms] ok
-str   sqrtn       250000 sec=   58.8 par=   64.3 ooo=   36.0 ooo+raiz=   36.7 | ooo/par=0.56 ooo+raiz/par=0.57 acel=1.60 [ooo tareas=7 ocio=6.3ms raiz=0.0ms] ok
-u64   pesado     1000000 sec=   12.4 par=    9.7 ooo=    7.6 ooo+raiz=    8.8 | ooo/par=0.78 ooo+raiz/par=0.90 acel=1.42 [ooo tareas=12 ocio=1.9ms raiz=1.1ms] ok
-r128  pesado      250000 sec=   31.2 par=   30.2 ooo=   22.3 ooo+raiz=   21.8 | ooo/par=0.74 ooo+raiz/par=0.72 acel=1.43 [ooo tareas=3 ocio=7.0ms raiz=0.0ms] ok
-str   pesado      250000 sec=   54.6 par=   51.4 ooo=   37.8 ooo+raiz=   38.4 | ooo/par=0.74 ooo+raiz/par=0.75 acel=1.42 [ooo tareas=3 ocio=19.4ms raiz=0.0ms] ok
-u64   mitades    1000000 sec=   13.1 par=   12.9 ooo=    9.4 ooo+raiz=    8.8 | ooo/par=0.73 ooo+raiz/par=0.68 acel=1.49 [ooo tareas=20 ocio=0.3ms raiz=1.2ms] ok
-r128  mitades     250000 sec=   39.8 par=   36.5 ooo=   29.0 ooo+raiz=   28.0 | ooo/par=0.80 ooo+raiz/par=0.77 acel=1.42 [ooo tareas=7 ocio=12.2ms raiz=0.0ms] ok
-str   mitades     250000 sec=   61.8 par=   60.8 ooo=   42.6 ooo+raiz=   39.5 | ooo/par=0.70 ooo+raiz/par=0.65 acel=1.57 [ooo tareas=6 ocio=12.2ms raiz=0.0ms] ok
-u64   asc1pct    1000000 sec=   14.8 par=   10.7 ooo=   10.6 ooo+raiz=   11.5 | ooo/par=0.98 ooo+raiz/par=1.07 acel=1.28 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-r128  asc1pct     250000 sec=   28.1 par=   29.8 ooo=   31.9 ooo+raiz=   30.2 | ooo/par=1.07 ooo+raiz/par=1.01 acel=0.93 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-str   asc1pct     250000 sec=   21.1 par=   19.4 ooo=   20.2 ooo+raiz=   21.2 | ooo/par=1.04 ooo+raiz/par=1.09 acel=0.99 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-u64   organ      1000000 sec=    4.5 par=    4.0 ooo=    4.4 ooo+raiz=    5.0 | ooo/par=1.10 ooo+raiz/par=1.24 acel=0.90 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-r128  organ       250000 sec=   10.5 par=   10.7 ooo=   10.0 ooo+raiz=   10.7 | ooo/par=0.94 ooo+raiz/par=1.00 acel=0.99 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-str   organ       250000 sec=   11.2 par=   11.1 ooo=   11.9 ooo+raiz=   11.4 | ooo/par=1.07 ooo+raiz/par=1.02 acel=0.99 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-u64   asc        1000000 sec=    0.4 par=    0.4 ooo=    0.4 ooo+raiz=    0.4 | ooo/par=0.97 ooo+raiz/par=0.99 acel=0.98 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-r128  asc         250000 sec=    1.2 par=    1.3 ooo=    1.2 ooo+raiz=    1.2 | ooo/par=0.97 ooo+raiz/par=0.95 acel=1.03 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-str   asc         250000 sec=    8.8 par=    8.5 ooo=    8.5 ooo+raiz=    8.5 | ooo/par=1.00 ooo+raiz/par=1.00 acel=1.03 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-u64   desc       1000000 sec=    0.8 par=    0.9 ooo=    0.9 ooo+raiz=    0.9 | ooo/par=0.99 ooo+raiz/par=1.01 acel=0.95 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-r128  desc        250000 sec=    2.7 par=    2.6 ooo=    2.6 ooo+raiz=    2.6 | ooo/par=0.98 ooo+raiz/par=1.00 acel=1.02 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-str   desc        250000 sec=   10.1 par=    9.5 ooo=    9.2 ooo+raiz=    9.2 | ooo/par=0.96 ooo+raiz/par=0.96 acel=1.10 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
-comparaciones por elemento rand     sec=20.52 par=20.53 ooo=21.32
-comparaciones por elemento dup16    sec=5.33 par=6.36 ooo=6.26
-comparaciones por elemento pesado   sec=11.88 par=12.13 ooo=13.50
-pico de RSS del proceso: 194 MB
+u64   rand       1000000 sec=   20.7 par=   13.6 ooo=   12.1 ooo+raiz=   11.5 | ooo/par=0.89 ooo+raiz/par=0.85 acel=1.80 [ooo tareas=24 ocio=0.3ms raiz=0.9ms] ok
+r128  rand        250000 sec=   45.9 par=   45.8 ooo=   33.9 ooo+raiz=   32.9 | ooo/par=0.74 ooo+raiz/par=0.72 acel=1.39 [ooo tareas=6 ocio=9.9ms raiz=0.0ms] ok
+str   rand        250000 sec=   87.6 par=   88.0 ooo=   50.5 ooo+raiz=   51.8 | ooo/par=0.57 ooo+raiz/par=0.59 acel=1.69 [ooo tareas=7 ocio=13.4ms raiz=0.0ms] ok
+u64   dup16      1000000 sec=    5.1 par=    5.5 ooo=    3.6 ooo+raiz=    3.7 | ooo/par=0.65 ooo+raiz/par=0.67 acel=1.38 [ooo tareas=13 ocio=0.2ms raiz=0.8ms] ok
+r128  dup16       250000 sec=   21.7 par=   21.7 ooo=   15.9 ooo+raiz=   15.0 | ooo/par=0.73 ooo+raiz/par=0.69 acel=1.45 [ooo tareas=5 ocio=7.4ms raiz=0.0ms] ok
+str   dup16       250000 sec=   23.2 par=   23.3 ooo=   18.2 ooo+raiz=   17.8 | ooo/par=0.78 ooo+raiz/par=0.76 acel=1.30 [ooo tareas=7 ocio=4.3ms raiz=0.0ms] ok
+u64   sqrtn      1000000 sec=    8.0 par=    8.6 ooo=    6.0 ooo+raiz=    5.9 | ooo/par=0.69 ooo+raiz/par=0.68 acel=1.36 [ooo tareas=27 ocio=0.3ms raiz=1.2ms] ok
+r128  sqrtn       250000 sec=   36.8 par=   37.1 ooo=   33.2 ooo+raiz=   26.2 | ooo/par=0.89 ooo+raiz/par=0.71 acel=1.40 [ooo tareas=5 ocio=6.2ms raiz=0.0ms] ok
+str   sqrtn       250000 sec=   50.3 par=   52.2 ooo=   32.0 ooo+raiz=   30.5 | ooo/par=0.61 ooo+raiz/par=0.58 acel=1.65 [ooo tareas=7 ocio=5.9ms raiz=0.0ms] ok
+u64   pesado     1000000 sec=   12.0 par=    9.3 ooo=    7.0 ooo+raiz=    7.7 | ooo/par=0.76 ooo+raiz/par=0.83 acel=1.54 [ooo tareas=12 ocio=1.6ms raiz=1.0ms] ok
+r128  pesado      250000 sec=   31.7 par=   29.7 ooo=   22.7 ooo+raiz=   21.4 | ooo/par=0.76 ooo+raiz/par=0.72 acel=1.48 [ooo tareas=3 ocio=6.9ms raiz=0.0ms] ok
+str   pesado      250000 sec=   49.8 par=   50.2 ooo=   34.5 ooo+raiz=   34.7 | ooo/par=0.69 ooo+raiz/par=0.69 acel=1.44 [ooo tareas=3 ocio=14.5ms raiz=0.0ms] ok
+u64   mitades    1000000 sec=   13.5 par=   13.9 ooo=    8.5 ooo+raiz=    7.8 | ooo/par=0.61 ooo+raiz/par=0.56 acel=1.73 [ooo tareas=20 ocio=0.3ms raiz=1.1ms] ok
+r128  mitades     250000 sec=   32.3 par=   32.0 ooo=   26.2 ooo+raiz=   24.8 | ooo/par=0.82 ooo+raiz/par=0.78 acel=1.30 [ooo tareas=7 ocio=11.7ms raiz=0.0ms] ok
+str   mitades     250000 sec=   52.1 par=   50.4 ooo=   31.6 ooo+raiz=   31.6 | ooo/par=0.63 ooo+raiz/par=0.63 acel=1.65 [ooo tareas=6 ocio=8.2ms raiz=0.0ms] ok
+u64   asc1pct    1000000 sec=   10.8 par=    8.0 ooo=    8.2 ooo+raiz=    8.1 | ooo/par=1.03 ooo+raiz/par=1.01 acel=1.33 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+r128  asc1pct     250000 sec=   25.5 par=   25.2 ooo=   25.0 ooo+raiz=   24.6 | ooo/par=0.99 ooo+raiz/par=0.98 acel=1.03 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+str   asc1pct     250000 sec=   20.3 par=   20.5 ooo=   20.1 ooo+raiz=   20.1 | ooo/par=0.98 ooo+raiz/par=0.98 acel=1.01 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+u64   organ      1000000 sec=    3.7 par=    3.6 ooo=    4.2 ooo+raiz=    4.2 | ooo/par=1.15 ooo+raiz/par=1.16 acel=0.89 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+r128  organ       250000 sec=    9.7 par=    9.2 ooo=    9.0 ooo+raiz=    9.2 | ooo/par=0.98 ooo+raiz/par=1.00 acel=1.06 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+str   organ       250000 sec=   10.7 par=   10.6 ooo=   10.8 ooo+raiz=    9.8 | ooo/par=1.02 ooo+raiz/par=0.93 acel=1.08 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+u64   asc        1000000 sec=    0.3 par=    0.3 ooo=    0.3 ooo+raiz=    0.3 | ooo/par=0.97 ooo+raiz/par=1.02 acel=1.02 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+r128  asc         250000 sec=    1.4 par=    1.4 ooo=    1.4 ooo+raiz=    1.3 | ooo/par=0.97 ooo+raiz/par=0.96 acel=1.04 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+str   asc         250000 sec=    9.8 par=    8.5 ooo=    7.8 ooo+raiz=    8.1 | ooo/par=0.92 ooo+raiz/par=0.95 acel=1.21 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+u64   desc       1000000 sec=    0.6 par=    0.6 ooo=    0.6 ooo+raiz=    0.6 | ooo/par=1.01 ooo+raiz/par=0.99 acel=1.02 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+r128  desc        250000 sec=    2.4 par=    2.4 ooo=    2.4 ooo+raiz=    2.4 | ooo/par=1.00 ooo+raiz/par=0.99 acel=1.00 [ordenado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+str   desc        250000 sec=    9.8 par=    9.9 ooo=    9.1 ooo+raiz=    9.2 | ooo/par=0.91 ooo+raiz/par=0.93 acel=1.07 [delegado tareas=0 ocio=0.0ms raiz=0.0ms] ok
+comparaciones por elemento rand     sec=20.52 par=20.53 ooo=20.70
+comparaciones por elemento dup16    sec=5.33 par=6.36 ooo=5.64
+comparaciones por elemento pesado   sec=11.88 par=12.13 ooo=12.94
+pico de RSS del proceso: 163 MB

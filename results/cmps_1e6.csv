@@ -7,7 +7,7 @@
 1000000,rand,grail512,O(1),20187656,1.0919,ok
 1000000,rand,wikisort,O(1),22477942,1.2158,ok
 1000000,rand,quadsort,O(n),20074078,1.0857,ok
-1000000,rand,fluxsort,O(n),20573855,1.1128,ok
+1000000,rand,fluxsort,O(n),20623617,1.1155,ok
 1000000,rand,glidesort,O(n),20828563,1.1265,ok
 1000000,rand,driftsort,O(n),20822276,1.1262,ok
 1000000,rand,std_stable,O(n),19825038,1.0723,ok
@@ -22,7 +22,7 @@
 1000000,dup16,grail512,O(1),21520449,1.1640,ok
 1000000,dup16,wikisort,O(1),12948347,0.7003,ok
 1000000,dup16,quadsort,O(n),10270391,0.5555,ok
-1000000,dup16,fluxsort,O(n),5256502,0.2843,ok
+1000000,dup16,fluxsort,O(n),5320084,0.2877,ok
 1000000,dup16,glidesort,O(n),7065826,0.3822,ok
 1000000,dup16,driftsort,O(n),5201970,0.2814,ok
 1000000,dup16,std_stable,O(n),19432217,1.0510,ok
@@ -37,7 +37,7 @@
 1000000,sqrtn,grail512,O(1),31389796,1.6978,ok
 1000000,sqrtn,wikisort,O(1),22048419,1.1925,ok
 1000000,sqrtn,quadsort,O(n),15538645,0.8404,ok
-1000000,sqrtn,fluxsort,O(n),12128167,0.6560,ok
+1000000,sqrtn,fluxsort,O(n),12153021,0.6573,ok
 1000000,sqrtn,glidesort,O(n),13512181,0.7308,ok
 1000000,sqrtn,driftsort,O(n),11291494,0.6107,ok
 1000000,sqrtn,std_stable,O(n),19821799,1.0721,ok
@@ -52,7 +52,7 @@
 1000000,zipf,grail512,O(1),20238043,1.0946,ok
 1000000,zipf,wikisort,O(1),20733700,1.1214,ok
 1000000,zipf,quadsort,O(n),18686203,1.0107,ok
-1000000,zipf,fluxsort,O(n),12884442,0.6969,ok
+1000000,zipf,fluxsort,O(n),12654143,0.6844,ok
 1000000,zipf,glidesort,O(n),13554788,0.7331,ok
 1000000,zipf,driftsort,O(n),11693258,0.6324,ok
 1000000,zipf,std_stable,O(n),19789640,1.0704,ok
@@ -88,10 +88,10 @@
 1000000,desc,std_stable,O(n),9281750,0.5020,ok
 1000000,desc,ipnsort,O(log n),999999,0.0541,ok
 1000000,desc,std_sort,O(log n),18131082,0.9806,ok
-1000000,asc1pct,sot8r,O(1),12514509,0.6769,ok
+1000000,asc1pct,sot8r,O(1),3991320,0.2159,ok
 1000000,asc1pct,sq5,O(1),14183140,0.7671,ok
-1000000,asc1pct,sot8r_fast,O(n),3845656,0.2080,ok
-1000000,asc1pct,sot8r_fast2,O(n) 2 hilos,4761204,0.2575,ok
+1000000,asc1pct,sot8r_fast,O(n),3877324,0.2097,ok
+1000000,asc1pct,sot8r_fast2,O(n) 2 hilos,4793127,0.2592,ok
 1000000,asc1pct,blitsort,O(1),7828524,0.4234,ok
 1000000,asc1pct,grail,O(1),17294031,0.9354,ok
 1000000,asc1pct,grail512,O(1),17294166,0.9354,ok
@@ -103,9 +103,9 @@
 1000000,asc1pct,std_stable,O(n),16934007,0.9159,ok
 1000000,asc1pct,ipnsort,O(log n),21527747,1.1644,ok
 1000000,asc1pct,std_sort,O(log n),34441593,1.8628,ok
-1000000,tail10,sot8r,O(1),4861088,0.2629,ok
+1000000,tail10,sot8r,O(1),4722410,0.2554,ok
 1000000,tail10,sq5,O(1),6927176,0.3747,ok
-1000000,tail10,sot8r_fast,O(n),4856716,0.2627,ok
+1000000,tail10,sot8r_fast,O(n),4708389,0.2547,ok
 1000000,tail10,sot8r_fast2,O(n) 2 hilos,12238753,0.6620,ok
 1000000,tail10,blitsort,O(1),4033021,0.2181,ok
 1000000,tail10,grail,O(1),9380957,0.5074,ok
@@ -118,9 +118,9 @@
 1000000,tail10,std_stable,O(n),11932061,0.6454,ok
 1000000,tail10,ipnsort,O(log n),22378514,1.2104,ok
 1000000,tail10,std_sort,O(log n),24813722,1.3421,ok
-1000000,organ,sot8r,O(1),3015038,0.1631,ok
+1000000,organ,sot8r,O(1),3060973,0.1656,ok
 1000000,organ,sq5,O(1),4571472,0.2473,ok
-1000000,organ,sot8r_fast,O(n),3000178,0.1623,ok
+1000000,organ,sot8r_fast,O(n),3000433,0.1623,ok
 1000000,organ,sot8r_fast2,O(n) 2 hilos,2500035,0.1352,ok
 1000000,organ,blitsort,O(1),2033886,0.1100,ok
 1000000,organ,grail,O(1),8505264,0.4600,ok
@@ -133,10 +133,10 @@
 1000000,organ,std_stable,O(n),10649223,0.5760,ok
 1000000,organ,ipnsort,O(log n),26859100,1.4527,ok
 1000000,organ,std_sort,O(log n),54113388,2.9268,ok
-1000000,sawsqrt,sot8r,O(1),12132446,0.6562,ok
+1000000,sawsqrt,sot8r,O(1),21303410,1.1522,ok
 1000000,sawsqrt,sq5,O(1),15099976,0.8167,ok
-1000000,sawsqrt,sot8r_fast,O(n),12077426,0.6532,ok
-1000000,sawsqrt,sot8r_fast2,O(n) 2 hilos,12078279,0.6533,ok
+1000000,sawsqrt,sot8r_fast,O(n),12077681,0.6532,ok
+1000000,sawsqrt,sot8r_fast2,O(n) 2 hilos,12078789,0.6533,ok
 1000000,sawsqrt,blitsort,O(1),14696615,0.7949,ok
 1000000,sawsqrt,grail,O(1),16965842,0.9176,ok
 1000000,sawsqrt,grail512,O(1),16964194,0.9175,ok
@@ -148,10 +148,10 @@
 1000000,sawsqrt,std_stable,O(n),16360810,0.8849,ok
 1000000,sawsqrt,ipnsort,O(log n),20750599,1.1223,ok
 1000000,sawsqrt,std_sort,O(log n),26222066,1.4183,ok
-1000000,runs63,sot8r,O(1),16490792,0.8919,ok
+1000000,runs63,sot8r,O(1),21373217,1.1560,ok
 1000000,runs63,sq5,O(1),20358968,1.1011,ok
-1000000,runs63,sot8r_fast,O(n),16436134,0.8890,ok
-1000000,runs63,sot8r_fast2,O(n) 2 hilos,16436100,0.8890,ok
+1000000,runs63,sot8r_fast,O(n),21373217,1.1560,ok
+1000000,runs63,sot8r_fast2,O(n) 2 hilos,21312603,1.1527,ok
 1000000,runs63,blitsort,O(1),20349735,1.1006,ok
 1000000,runs63,grail,O(1),18894966,1.0220,ok
 1000000,runs63,grail512,O(1),18895989,1.0220,ok

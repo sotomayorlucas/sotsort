@@ -1,0 +1,323 @@
+%======================================================================
+\section{Versión 7 y reconstrucción v8-r}\label{sec:v8r}
+
+\paragraph{Estado.} El código fuente de la versión 8 se perdió. La implementación
+actual (\texttt{sotsort.hpp}, ``v8-r'') se reescribió a partir de este documento, del
+libro y de una versión anterior del código. Las demostraciones de las secciones
+anteriores son sobre el pseudocódigo y no cambian; lo que cambia es que la
+correspondencia con el código vuelve a apoyarse solo en pruebas diferenciales contra
+\texttt{std::stable\_sort} (sección~\ref{sec:v8r-pruebas}). Esta sección agrega lo que
+el documento no cubría: dos cambios de la versión 7 y cuatro adiciones de v8-r. Las
+cuatro adiciones solo eligen entre procedimientos ya demostrados o reordenan
+recorridos; ninguna introduce un procedimiento de ordenamiento nuevo.
+
+\subsection{Versión 7: pivote con posiciones pseudoaleatorias}
+\Pivote toma sus muestras en posiciones $l+js+\Aleatorio{}\bmod s$ en lugar de $l+js$,
+con un generador determinista sembrado con $\sigma\oplus n$. El Lema~\ref{lem:pivote}
+solo usa que $p$ es copia de un elemento de \seg{A}{l}{r}, y cada posición muestreada
+cumple $l\le l+js+(\Aleatorio{}\bmod s)<r$ porque $(j+1)s\le r-l$. El lema y todo lo que
+depende de él valen sin cambios. El Teorema~\ref{thm:det} tampoco cambia: la secuencia de
+\Aleatorio es función de $n$ y de la semilla.
+
+\subsection{Versión 7: partición de bloque vectorial}
+
+\begin{algorithm}[H]
+\caption{Partición de bloque vectorial, con $w$ carriles}\label{alg:partvec}
+\KwIn{$s<e$ con $L=e-s\le\Bsz$; pivote $p$; $\triangleleft\in\{\lt,\les\}$; $T$ entero y $\lt$ es $<$}
+\Fn{\PartVec{$s, e, p, \triangleleft$}}{
+  $m\gets 0$;\quad $i\gets 0$\;
+  \While{$i+w\le L$}{
+    $X\gets A[s+i\,..\,s+i+w)$\tcp*{una carga}
+    $k\gets\{\,j<w : X[j]\triangleleft p\,\}$\;
+    $A[s+m\,..\,s+m+w)\gets\mathrm{comprimir}(X,k)$\;
+    $\buf[i-m\,..\,i-m+w)\gets\mathrm{comprimir}(X,\overline{k})$\;
+    $m\gets m+|k|$;\quad $i\gets i+w$\;
+  }
+  cola escalar: el lazo de \PartBloque desde $i$\;
+  $A[s+m\,..\,e)\gets\buf[0\,..\,L-m)$;\quad \KwRet $s+m$\;
+}
+\end{algorithm}
+
+\noindent $\mathrm{comprimir}(X,k)$ es el vector con los carriles de $X$ marcados en $k$,
+en su orden, seguidos de $w-|k|$ carriles de contenido arbitrario.
+
+\begin{lema}[Partición vectorial]\label{lem:partvec}
+Con $C=\seg{A_0}{s}{e}$ el contenido inicial y $P(x)\equiv x\triangleleft p$, al terminar
+$\seg{A}{s}{e}=\filt(P,C)\cat\filt(\neg P,C)$ y se devuelve $s+|\filt(P,C)|$. Ninguna
+escritura cae fuera de \seg{A}{s}{e} ni de $\buf[0..L)$.
+\end{lema}
+\begin{proof}
+Invariante del lazo: $\seg{A}{s}{s+m}=\filt(P,C[0..i))$,
+$\buf[0..i-m)=\filt(\neg P,C[0..i))$ y $\seg{A}{s+i}{e}=C[i..L)$.
+\emph{Preservación.} $X=C[i..i+w)$ por la tercera cláusula. El store sobre $A$ escribe
+$[s+m,s+m+w)$; como $m\le i$, ese rango está contenido en $[s,s+i+w)$, cuyo contenido
+ya fue leído ($C[0..i)$ en vueltas anteriores, $C[i..i+w)$ en $X$), así que no destruye
+nada de $C[i+w..L)$, y $s+m+w\le s+i+w\le e$. Sus primeros $|k|$ carriles son
+$\filt(P,X)$ y extienden el prefijo. El store sobre $\buf$ escribe
+$[i-m,i-m+w)$ con $i-m+w\le i+w\le L\le\Bsz$; sus primeros $w-|k|$ carriles son
+$\filt(\neg P,X)$. \emph{Terminación.} La cola escalar es el lazo de
+\PartBloque con el mismo invariante (Lema~\ref{lem:partbloque}), y la copia final es
+la suya.
+\end{proof}
+
+Por el Supuesto~\ref{sup:enteros}, evaluar $\triangleleft$ con una comparación vectorial
+de enteros da el mismo resultado que $\lt$ carril por carril. El
+Lema~\ref{lem:partest} usa a \PartBloque solo a través de su poscondición, que
+\PartVec comparte.
+
+\subsection{v8-r: sonda de rachas en SymMerge}\label{sec:sonda}
+En una hoja de \SymMerge (un lado entra en el buffer) hay tres mezclas posibles: copiar
+todo al buffer y hacer un \Parity de largos distintos, si los dos runs entran juntos;
+copiar el lado corto y usar \MIzq/\MDer con galope; o \MIzq/\MDer con el lazo
+clásico. La primera no tiene saltos y conviene cuando los runs se intercalan elemento
+por elemento; el galope conviene con rachas largas. En el camino de runs naturales,
+para tipos que se copian byte a byte y $a+b\ge256$, se decide con una sonda.
+
+Sean $X=\seg{A}{l}{m}$ e $Y=\seg{A}{m}{r}$ ordenados, $a=|X|$, $b=|Y|$. La sonda toma
+$x_0=l$, $x_i=l+\lfloor ia/9\rfloor$ para $1\le i\le 8$, $x_9=m$, y
+$y_0=m$, $y_i=\min\{\,j\in[y_{i-1},r] : j=r \vee A[j]\nlt A[x_i]\,\}$ para $1\le i\le8$,
+$y_9=r$. Define
+\[\mathit{sw}=\sum_{i=1}^{9}\bigl(2\min(x_i-x_{i-1},\,y_i-y_{i-1})+1\bigr).\]
+
+\begin{lema}[Sonda de rachas]\label{lem:sonda}
+\begin{enumerate}[label=(\alph*),nosep]
+\item $\Mrg(X,Y)$ tiene a lo sumo $\mathit{sw}$ cambios de lado (posiciones consecutivas
+  de la salida que vienen una de $X$ y otra de $Y$).
+\item La sonda hace a lo sumo $8\lceil\lg(b+1)\rceil$ comparaciones y no escribe.
+\item Elegir una u otra mezcla según $\mathit{sw}$ no altera la poscondición del
+  Lema~\ref{lem:sym}.
+\end{enumerate}
+\end{lema}
+\begin{proof}
+(a) Para $1\le i\le8$: todo $y$ de $Y$ antes de $y_i$ cumple $y\lt A[x_i]$ (los $y_i$ son
+no decrecientes e $Y$ está ordenado), así que precede a $A[x_i]$ en $\Mrg(X,Y)$; todo $y$
+desde $y_i$ cumple $y\nlt A[x_i]$ y, como en empates va primero $X$
+(Def.~\ref{def:merge}), queda después de $A[x_i]$. Luego
+$\Mrg(X,Y)=\cat_{i=1}^{9}\Mrg(\seg{A}{x_{i-1}}{x_i},\seg{A}{y_{i-1}}{y_i})$. Una mezcla
+de $g_x$ y $g_y$ elementos tiene a lo sumo $2\min(g_x,g_y)$ cambios de lado, y entre dos
+tramos consecutivos hay a lo sumo uno más.
+(b) Son 8 búsquedas binarias sobre sufijos de $Y$.
+(c) Las tres mezclas cumplen la misma poscondición: Lemas~\ref{lem:parity},
+\ref{lem:mizq} y~\ref{lem:mizqg}.
+\end{proof}
+
+La regla es: galope si $8\,\mathit{sw}\le a+b$ (por (a), las rachas miden 8 o más en
+promedio); si no, \Parity cuando $a+b\le\Bsz$, y el lazo clásico con saltos cuando no
+entran juntos. Con menos de 256 elementos se usa \Parity sin sondear. El umbral y la
+cantidad de muestras se eligieron midiendo en una sola máquina. Para los tipos que no se
+copian byte a byte no hay sonda: se usa el galope, como en la versión 8. Por (b) y
+porque \Natural hace a lo sumo $\lceil n/24\rceil-1$ mezclas, la sonda agrega
+$O(n\log n)$ comparaciones en el peor caso y no cambia el Teorema~\ref{thm:cost}; con
+mezclas balanceadas de tamaño $s\ge256$ hay $n/s$ por nivel y el total es $O(n)$.
+
+\subsection{v8-r: sonda de orden global y regla de ruta}\label{sec:ruta}
+\PocosGiros manda a \Natural toda entrada con menos de $n/8$ giros. Eso es un error
+cuando los runs tienen claves entremezcladas (por ejemplo, tramos ordenados de 63 claves
+al azar): \Natural hace $\lg(\text{runs})$ niveles de mezclas que alternan elemento por
+elemento. En v8-r, si hay pocos giros se toman 256 muestras, una por tramo de largo
+$\lfloor n/256\rfloor$ en una posición pseudoaleatoria del tramo, y se cuentan los
+cambios de dirección entre muestras vecinas. Con menos de 64 cambios la entrada tiene
+orden global y va a \Natural. Si no, va a \Natural solo cuando
+$k\lceil\lg R\rceil\le\lceil\lg(n/\leaf)\rceil$, con $R=\lfloor g/2\rfloor+1$ la
+estimación de runs a partir de los $g$ giros y $k$ el costo relativo de un nivel de
+mezcla ($k=3$ o $2$ con buffer chico, según haya o no partición vectorial; $2$ o $5/4$
+con buffer de al menos $n/2$). La sonda y la regla se aplican solo a tipos que se copian
+byte a byte: con \emph{strings} mandar esas entradas al quicksort midió peor.
+
+\begin{observacion}\label{obs:ruta}
+La regla solo elige entre \Natural y \Quick. Los Teoremas~\ref{thm:natural}
+y~\ref{thm:quick} valen para toda entrada que cumple sus precondiciones, sin importar
+cómo se eligió el camino, así que el Teorema~\ref{thm:main} no cambia. La sonda hace
+255 comparaciones y no escribe. Las constantes $k$ y el umbral de 64 salen de mediciones
+en una sola máquina; una mala elección cuesta tiempo, nunca corrección. Sin el
+desplazamiento pseudoaleatorio, runs de largo fijo producen muestras en posiciones
+relativas que avanzan en progresión aritmética, y la entrada parece ordenada
+(lo vi con runs de 1000 y $n=10^6$).
+\end{observacion}
+
+\subsection{v8-r: zonas desordenadas en MergeNatural}\label{sec:zonas}
+Una entrada con orden global puede tener una zona al azar (el 10\% final, o un bloque
+en el medio). Ahí \Natural encuentra runs de uno o dos elementos, los extiende a 24 con
+inserción y los mezcla con mezclas mal predichas. En v8-r, cuando \Natural encuentra un
+run de menos de 24 elementos mira hacia adelante: si ese run y los siguientes suman 8
+o más runs seguidos de menos de 8 elementos, extiende la zona $[i,e)$ hasta el primer
+run de 16 o más (o el final), la ordena con \Quick y la apila como un solo run. Si no,
+hace lo de antes. Igual que la regla de ruta, se aplica solo a tipos que se copian byte
+a byte.
+
+\begin{lema}[Zonas]\label{lem:zonas}
+Con esa modificación, el Teorema~\ref{thm:natural} sigue valiendo, y la pila de runs y
+la cota de mezclas por elemento del Lema~\ref{lem:natcost} no cambian. El recorrido
+hacia adelante agrega a lo sumo $3n$ comparaciones en total.
+\end{lema}
+\begin{proof}
+El invariante de \Natural pide que cada entrada de la pila sea un intervalo ordenado y
+coherente con los elementos de $\Omega$ restringido a él, y que los intervalos sean
+adyacentes. La zona $[i,e)$ es un intervalo todavía no apilado; su contenido es
+coherente porque solo se invirtieron runs estrictamente descendentes
+(Lema~\ref{lem:yaord}). Por el Teorema~\ref{thm:quick}, \Quick deja $[i,e)$ ordenado y
+coherente, que es lo que el invariante pide de un run. El buffer está libre entre dos
+mezclas, así que \Quick puede usarlo. El Lema~\ref{lem:natcost} solo usa los largos de
+los runs apilados, no cómo se obtuvieron, y la zona mide al menos 8 elementos. Costo
+del recorrido: cada run mirado se recorre hasta 16 elementos como máximo, se miran a lo
+sumo 8 runs antes de decidir que no hay zona (menos de $7\cdot 8+16=72$ comparaciones), y
+después de decidirlo \Natural avanza al menos 24 posiciones; cuando hay zona, el
+recorrido es lineal en la zona.
+\end{proof}
+
+El tiempo de la zona es el de \Quick sobre $e-i$ elementos; el Teorema~\ref{thm:cost}
+no cambia porque \Quick está dentro de la misma cota.
+
+\subsection{v8-r: recorridos vectoriales}
+Para enteros con el orden natural, \Ordenado y \PocosGiros comparan $w$ pares adyacentes
+por instrucción. Calculan exactamente los mismos predicados
+($A[i]\lt A[i-1]$ para cada $i$) en el mismo orden de posiciones, así que los
+Lemas~\ref{lem:yaord} y la Observación~\ref{obs:heur} no cambian. Las lecturas van de
+$A[i-1]$ a $A[i+w-1]$ con $i+w\le r$: no salen del rango.
+
+\subsection{Verificación de v8-r}\label{sec:v8r-pruebas}
+Pruebas diferenciales contra \texttt{std::stable\_sort}, con el índice original como
+etiqueta: enteros de 32 y 64 bits con y sin signo, pares, registros de 16, 40 y 128
+bytes y \emph{strings}; los tres modos de memoria; de 1 a 4 hilos; orden por clave;
+15 familias de entradas, incluidas zonas desordenadas y runs de claves al azar. Sobre el
+archivo final: sin fallas en 19\,506 casos con AVX-512 y en 7\,410 con AVX2, sin SIMD y
+con clang. AddressSanitizer, UBSan y ThreadSanitizer no informan nada. Se inyectaron
+fallas de reserva en cada punto. Un contador en una versión anterior del mismo día
+confirmó que las pruebas ejecutan las zonas (207 veces en una corrida), la regla de ruta
+(480) y la sonda de orden (1245). Limitación conocida: si el
+comparador lanza una excepción se pueden perder elementos; no hay errores de memoria.
+
+%======================================================================
+\section{Planificación fuera de orden (experimental)}\label{sec:ooo}
+
+Esta sección estudia ejecutar los rangos pendientes de \Quick como tareas, en cualquier
+orden y en varios hilos, sin las rondas de mezcla de \Paralelo. El prototipo
+(\texttt{sotsort\_ooo.hpp}) está aislado de la biblioteca. Los resultados (a) a (e) del
+Teorema~\ref{thm:ooo} están demostrados a mano al nivel de este documento; la
+implementación del planificador solo está verificada por pruebas.
+
+\subsection{Modelo}
+Una \emph{tarea} es un rango pendiente $(l,r,\beta,\mathit{lb})$ de \Quick. Ejecutarla
+es correr el lazo interior del Algoritmo~\ref{alg:quick} sobre ese rango, con una
+diferencia: cuando el algoritmo secuencial apilaría la mitad grande de una partición,
+la tarea puede \emph{cederla}: la pone en una cola compartida y sigue con la mitad
+chica. La cola admite a lo sumo $64P$ tareas; con la cola llena la mitad grande se
+apila localmente, como en el algoritmo secuencial. $P$ trabajadores toman tareas de la
+cola hasta que está vacía y ninguno trabaja. Ninguna tarea espera a otra.
+
+La \emph{huella} de una tarea es el conjunto de celdas que lee o escribe. Dos tareas
+\emph{conmutan} si ejecutarlas en cualquier orden, o intercaladas, deja el mismo estado.
+
+\begin{lema}[Conmutación]\label{lem:conm}
+Si las huellas de $T_1$ y $T_2$ son disjuntas, $T_1$ y $T_2$ conmutan, y bajo el
+Supuesto~\ref{sup:hilos} pueden ejecutarse a la vez sin carreras.
+\end{lema}
+\begin{proof}
+Es el caso más simple de las condiciones de Bernstein: ninguna escribe lo que la otra
+lee o escribe, así que cada una observa el mismo estado inicial en cualquier
+intercalado y sus efectos se componen.
+\end{proof}
+
+\begin{lema}[Buffers disjuntos]\label{lem:bufdisj}
+En modo completo, si mientras \Quick procesa $[l,r)$ se usa $\buf=\mathit{aux}+l$ y
+$\Bsz=r-l$, toda escritura en el buffer cae en $\mathit{aux}[l..r)$. En los otros modos,
+con un buffer por trabajador, toda escritura en el buffer cae en el buffer del
+trabajador que ejecuta la tarea.
+\end{lema}
+\begin{proof}
+Segundo caso: inmediato. Primer caso, por lo que se ejecuta con ese rango.
+\Part: como $r-l\le\Bsz$ hay un solo bloque; \PartBloque escribe $\buf[i-m]$ con
+$i<r-l$ y \PartVec escribe $\buf[i-m..i-m+w)$ con $i+w\le r-l$
+(Lema~\ref{lem:partvec}); no hay fusiones, así que \Rotar no se ejecuta. \Hoja: escribe
+$\buf[0..c)$ y $\buf[0..t)$ con $c\le t\le r-l$. \Pivote: a lo sumo $\Bsz$ muestras.
+\Respaldo: \SymMerge sobre un subrango $[l',r')$ escribe desde $\buf[0]$ a lo sumo
+$r'-l'\le r-l$ celdas.
+\end{proof}
+
+\begin{teorema}[Planificación fuera de orden]\label{thm:ooo}
+Sea $A_0$ coherente con $n\ge2$ y supongamos los
+Supuestos~\ref{sup:orden}--\ref{sup:hilos}. Para cualquier orden de ejecución de las
+tareas y cualquier $P\ge1$:
+\begin{enumerate}[label=(\alph*),nosep]
+\item en todo momento, los rangos de la cola, los de las pilas locales y los que están
+  en curso son disjuntos dos a dos y cada uno es pendiente en el sentido de la
+  Def.~\ref{def:invq}; el resto de $[0,n)$ está terminado;
+\item dos tareas en curso tienen huellas disjuntas;
+\item las dependencias entre tareas forman un árbol;
+\item la ejecución termina, sin bloqueo mutuo ni inanición;
+\item al terminar, $A=\Omega$: la salida no depende del orden de ejecución ni de $P$, y
+  es la de \SotSort.
+\end{enumerate}
+\end{teorema}
+\begin{proof}
+(a) El invariante de \Quick (Def.~\ref{def:invq}) habla de un conjunto de intervalos
+pendientes; la demostración del Teorema~\ref{thm:quick} nunca usa que estén en una
+pila ni el orden en que se procesan. Cada paso de una tarea es un paso del lazo
+secuencial sobre su propio rango y preserva el invariante por la misma prueba. Ceder
+una mitad en lugar de apilarla no cambia el conjunto.
+(b) Por (a) los rangos son disjuntos; por el Lema~\ref{lem:bufdisj} los buffers
+también. El estado del planificador se lee y escribe con un cerrojo tomado, y la cota
+inferior viaja por copia (Supuesto~\ref{sup:ident}).
+(c) Una tarea depende solo de la partición que la creó, y su rango está contenido
+estrictamente en el de esa partición.
+(d) Ninguna tarea espera a otra, así que no hay ciclo de espera. Cada tarea termina
+por el Lema~\ref{lem:prof}. Las tareas son finitas: los rangos cedidos son disjuntos o
+anidados y cada uno mide al menos el grano. La cola se atiende en orden de llegada.
+Un trabajador termina solo cuando la cola está vacía y ningún otro trabaja, y en ese
+estado no puede aparecer otra tarea.
+(e) Al terminar no quedan pendientes, así que por (a) todo $[0,n)$ está terminado:
+$A=\Omega$. $\Omega$ es única (Def.~\ref{def:omega}).
+\end{proof}
+
+\begin{observacion}
+(e) es unicidad de la permutación estable, no una propiedad del planificador: cualquier
+ordenamiento estable correcto da la misma salida. Lo que sí depende del diseño es que
+las comparaciones realizadas no dependan del orden de ejecución: la semilla de
+\Aleatorio de cada tarea cedida se deriva de $(\sigma,l,r)$, y la decisión de ceder
+depende solo de los tamaños. Si la cola se llena, la decisión pasa a depender del
+orden de ejecución; en las mediciones no se llenó nunca.
+\end{observacion}
+
+\subsection{Partición paralela de la raíz}
+La primera partición es secuencial y fija el camino crítico. En modo completo se
+reemplaza por tres fases. Sean $d_0=0<d_1<\dots<d_P=n$ y $P(x)\equiv x\lt p$.
+\textbf{Fase 1} (en paralelo, tramo $i$): los que cumplen $P$ quedan en
+$A[d_i..d_i+m_i)$ y el resto en $\mathit{aux}[d_i..d_i+f_i)$, en su orden (es
+\PartBloque sin la copia final). \textbf{Fase 2} (secuencial, $i=1,\dots,P-1$):
+$A[d_i..d_i+m_i)$ se mueve a $A[M_i..)$ con $M_i=\sum_{j<i}m_j$. \textbf{Fase 3} (en
+paralelo): $\mathit{aux}[d_i..d_i+f_i)$ se copia a $A[M+F_i..)$, con $M=\sum_j m_j$ y
+$F_i=\sum_{j<i}f_j$.
+
+\begin{lema}[Raíz paralela]\label{lem:raiz}
+Al terminar, $A=\filt(P,A_0)\cat\filt(\neg P,A_0)$, y las fases 1 y 3 no tienen
+carreras.
+\end{lema}
+\begin{proof}
+Fase 1: el tramo $i$ usa $A[d_i..d_{i+1})$ y $\mathit{aux}[d_i..d_{i+1})$, disjuntos
+entre tramos. Fase 2: $M_i\le d_i$, así que el destino empieza a la izquierda del origen
+y un movimiento hacia adelante es seguro; el destino termina en
+$M_i+m_i\le d_i+m_i\le d_{i+1}$, antes del origen del tramo siguiente. Queda
+$A[0..M)=\filt(P,A_0)$ porque cada tramo conserva su orden y los tramos se concatenan en
+orden. Fase 3: los destinos $[M+F_i,M+F_i+f_i)$ son disjuntos, están en $A[M..n)$, y los
+orígenes están en $\mathit{aux}$; $A[M..n)$ ya no tiene nada pendiente.
+\end{proof}
+
+\subsection{Trabajo y camino crítico}
+El trabajo $W(n)$ es el de \Quick más $O(1)$ por tarea. Con la partición secuencial, el
+camino crítico es $S(n)=\Theta(n)$ esperado (la partición de un rango de largo $\lambda$
+cuesta $\Theta(\lambda)$ y, siguiendo la mitad grande, las $\lambda$ decrecen
+geométricamente), así que el paralelismo $W/S$ es $\Theta(\log n)$. Con la raíz paralela
+el primer término baja a $n/P+(M-m_0)+\max_i f_i$. Dentro de \Part por bloques, con
+rotaciones secuenciales, la fusión de la raíz mueve $\Theta(\lambda)$: el paralelismo
+interno es $O(\lg(\lambda/\Bsz))$, y por eso no se construyó una variante con tareas por
+bloque.
+
+\subsection{Qué no está demostrado}
+\begin{itemize}[nosep]
+\item Que la implementación del planificador (cola, cerrojo, variable de condición)
+  cumple el modelo. Evidencia: 466 casos contra \texttt{std::stable\_sort} con 2 a 5
+  hilos y grano de 64 a 32\,768, y 60 corridas con un comparador que lanza, todo sin
+  avisos de ThreadSanitizer ni de AddressSanitizer.
+\item Cualquier afirmación de escalabilidad: solo se midió con 2 núcleos.
+\item El modelo de memoria de C++ en detalle; el Supuesto~\ref{sup:hilos} lo resume.
+\end{itemize}

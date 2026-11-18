@@ -33,14 +33,33 @@ paralelo con cortes precalculados, orden por clave (indirecto empaquetado y radi
 - `Sorter::Spawner`, `quick_task`, `follow_buffer`: ganchos para el prototipo OOO.
 - `SOT_V6_BUG`: quita la línea de v6.1 para reproducir el defecto.
 
-## Verificación hecha
-- `test.cpp` contra `std::stable_sort` (etiquetas para estabilidad): u32/i32/u64/i64, pares,
-  registros de 16/40/128 B, strings; modos O1/Bloques/Completo; 1 a 4 hilos; orden por clave.
-  24 390 casos sin fallas (AVX-512); 6 586 con AVX2, sin SIMD, clang; ASan+UBSan y TSan limpios.
-- `test_extra.cpp`: fallas de reserva inyectadas en cada punto, adversario, comparador que lanza.
-- Cobertura de líneas (gcov, antes de `test_extra`): 638 de 667; lo no cubierto era el respaldo,
-  la caída escalonada y el cgroup v1. `test_extra` ejercita los dos primeros; no volví a medir.
-- `adv_quick.cpp`: adversario perezoso del libro contra QuickEstable. Con la línea de v6.1:
+## Segunda tanda de optimizaciones (v8-r, misma fecha)
+Medidas contra la reconstrucción inicial con corridas intercaladas (`results/ab_v8r_vs_v8r2.txt`).
+- **Sonda de rachas extendida:** ahora decide entre galope, parity merge y lazo clásico en toda
+  mezcla con buffer del camino de runs naturales (tipos triviales).
+- **Sonda de orden global y regla de ruta:** runs con claves entremezcladas van al quicksort salvo
+  que sean pocos. Runs de 63: 0,26 a 0,65 del tiempo anterior.
+- **Zonas desordenadas:** 8 o más runs seguidos de menos de 8 elementos se ordenan con el
+  quicksort. Cola o bloque al azar del 10%: 0,45 a 0,81.
+- **Recorridos vectoriales** en la detección de orden y el conteo de giros (enteros).
+- **Selección sin salto** en parity merges, solo gcc y tipos no aritméticos: pares 0,76 a 0,81.
+- Regla de ruta y zonas **desactivadas para tipos no triviales**: con strings midieron hasta 1,61.
+- Probado y descartado: buffer de 4 a 128 KB y hoja de 32 a 256 (sin diferencia), desenrollado de
+  la partición escalar, paso de cabeza sin salto en el galope, selección sin salto para escalares
+  (10% peor), mezcla sin salto para runs intercalados que no entran en el buffer (2× peor).
+- Los umbrales (8 muestras, 256 muestras, k de 5/4 a 3, zonas de 8/8/16) se ajustaron en una sola
+  máquina y sobre varias de las mismas entradas del banco: las filas de datos con estructura de la
+  comparación con otros sorts son optimistas.
+
+## Verificación hecha (archivo final)
+- `tests/test.cpp` contra `std::stable_sort` (etiquetas para estabilidad): u32/i32/u64/i64, pares,
+  registros de 16/40/128 B, strings; modos O1/Bloques/Completo; 1 a 4 hilos; orden por clave;
+  15 familias de entradas. 19 506 casos sin fallas (AVX-512); 7 410 con AVX2, sin SIMD y clang;
+  ASan+UBSan y TSan limpios.
+- `tests/test_extra.cpp`: fallas de reserva inyectadas en cada punto, adversario, comparador que lanza.
+- `tests/test_ooo.cpp` y `tests/test_ooo_throw.cpp`: planificador experimental.
+- Un contador temporal confirmó que las pruebas ejecutan las zonas, la regla de ruta y la sonda.
+- `tests/adv_quick.cpp`: adversario perezoso del libro contra QuickEstable. Con la línea de v6.1:
   20 a 31 comparaciones por elemento (n = 1000 a 32000). Con `-DSOT_V6_BUG`: 167, 335, 668, 1335
   (aprox. n/6, cuadrático), hasta N9.
 

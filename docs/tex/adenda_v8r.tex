@@ -1,0 +1,226 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage[margin=2.3cm]{geometry}
+\usepackage{amsmath,amssymb,booktabs,microtype,enumitem}
+\usepackage[hidelinks]{hyperref}
+\title{\textbf{SotSort v8-r}\\[3pt]\large Adenda al resumen y al libro: reconstrucción,\\
+optimizaciones nuevas y planificación fuera de orden}
+\author{Lucas Sotomayor}
+\date{17 de noviembre de 2026 --- borrador}
+\renewcommand{\tablename}{Tabla}
+\renewcommand{\contentsname}{Índice}
+\begin{document}
+\maketitle
+
+\section{Por qué existe esta adenda}
+El código fuente de la versión 8, sus pruebas y los datos de las figuras se perdieron.
+\texttt{sotsort.hpp} (``v8-r'') es una reescritura hecha desde el pseudocódigo, las
+demostraciones, el libro y una versión anterior del código. Consecuencias:
+\begin{itemize}[nosep]
+\item \textbf{Los números del resumen y de los capítulos 1 y 2 del libro son del código
+  perdido.} No se pueden reproducir y no describen a v8-r. Los vigentes son los de esta
+  adenda.
+\item Los algoritmos y las demostraciones de esos textos siguen valiendo para el
+  pseudocódigo. Lo nuevo está demostrado en las secciones 13 y 14 del documento de
+  demostraciones.
+\item Las mediciones de acá son de una sola máquina: una VM de 2 vCPU (Xeon con
+  AVX-512), gcc 13, $n=10^6$ salvo que se indique, mediana de 5 corridas fijadas a un
+  núcleo. Dos corridas idénticas llegaron a diferir en $\pm15\%$. No deberían citarse
+  sin repetirlas en hardware dedicado.
+\end{itemize}
+
+\section{Qué se agregó}
+\begin{description}[leftmargin=1.2em,itemsep=2pt]
+\item[Sonda de rachas.] En cada mezcla con buffer del camino de runs naturales, 8
+  búsquedas binarias acotan la cantidad de cambios de lado. Con rachas largas se usa
+  galope; si no, \emph{parity merge} cuando los dos runs entran en el buffer, o el lazo
+  clásico. Solo para tipos que se copian byte a byte.
+\item[Sonda de orden global y regla de ruta.] Con pocos giros, 256 muestras en
+  posiciones pseudoaleatorias dicen si los runs tienen las claves entremezcladas. Si es
+  así, se va al quicksort salvo que haya pocos runs: se compara
+  $k\lceil\lg R\rceil$ con $\lceil\lg(n/L)\rceil$, con $k$ entre $5/4$ y $3$ según el
+  modo. Corrige el error conocido de mandar ``runs de 63'' al camino de mezclas.
+\item[Zonas desordenadas.] Si el camino de runs naturales encuentra 8 o más runs
+  seguidos de menos de 8 elementos, ordena toda la zona con el quicksort estable y la
+  trata como un run.
+\item[Recorridos vectoriales.] La detección de orden y el conteo de giros comparan 8 o
+  16 pares por instrucción con enteros.
+\item[Selección sin salto en gcc.] En los \emph{parity merges}, gcc convertía
+  \texttt{t ? *a : *b} en un salto para estructuras; clang no. Se reemplazó por una
+  selección con aritmética de punteros, solo para tipos no aritméticos y solo en gcc.
+\item[Planificador experimental.] Sección~\ref{sec:ooo}.
+\end{description}
+Ninguna adición es un procedimiento de ordenamiento nuevo: todas eligen entre
+procedimientos ya demostrados o cambian cómo se recorre.
+
+\section{Efecto medido de las optimizaciones}
+La tabla~\ref{tab:ab} compara la reconstrucción inicial con la actual, en el mismo
+binario y con corridas intercaladas (mínimo de 7).
+
+\begin{table}[h]\centering\footnotesize
+\begin{tabular}{lccccc}
+\toprule
+Entrada & u64 & u32 & par (struct) & u64 con comparador & \emph{strings}\\
+\midrule
+aleatoria & 0,99 / 0,97 & 0,98 / 0,97 & 0,81 / 0,76 & 1,02 / 1,00 & 1,02 / 1,02\\
+16 valores & 0,96 / 0,98 & 0,97 / 1,01 & 1,01 / 0,97 & 1,00 / 0,97 & 1,03 / 1,01\\
+Zipf & 0,99 / 0,93 & 0,95 / 1,01 & 0,99 / 0,91 & 1,01 / 0,95 & 1,01 / 0,94\\
+ordenada & 0,86 / 0,83 & 0,44 / 0,45 & 1,01 / 1,01 & 0,99 / 1,00 & 0,80 / 0,81\\
+invertida & 0,89 / 0,89 & 0,62 / 0,62 & 0,99 / 0,96 & 1,01 / 1,27 & 1,05 / 1,10\\
+1\% de ruido & 0,78 / 0,94 & 0,62 / 0,94 & 1,06 / 1,01 & 0,65 / 0,98 & 0,99 / 0,94\\
+cola 10\% al azar & 0,51 / 0,66 & 0,45 / 0,61 & 0,52 / 0,79 & 0,66 / 0,72 & 1,00 / 0,97\\
+10\% al azar en el medio & 0,50 / 0,65 & 0,45 / 0,61 & 0,52 / 0,81 & 0,66 / 0,72 & 1,01 / 0,98\\
+20 bloques al azar & 0,91 / 0,86 & 0,79 / 0,84 & 0,89 / 1,01 & 0,86 / 0,94 & 1,00 / 0,94\\
+\emph{organ pipe} & 1,06 / 0,89 & 0,56 / 0,79 & 0,62 / 0,99 & 0,92 / 0,99 & 1,00 / 0,88\\
+sierra de 8 dientes & 1,06 / 0,91 & 0,73 / 0,90 & 0,54 / 1,04 & 0,89 / 0,98 & 1,00 / 0,92\\
+runs de 5000 & 0,50 / 0,88 & 0,38 / 0,76 & 0,61 / 0,76 & 0,79 / 1,01 & 1,00 / 0,98\\
+runs de 1000 & 0,41 / 0,70 & 0,32 / 0,61 & 0,50 / 0,75 & 0,63 / 1,02 & 1,03 / 0,94\\
+runs de 63 & 0,34 / 0,50 & 0,26 / 0,42 & 0,41 / 0,56 & 0,50 / 0,65 & 1,00 / 1,01\\
+\bottomrule
+\end{tabular}
+\caption{Tiempo nuevo / tiempo anterior, modo O(1) / modo rápido con un hilo. Menos de 1
+es mejora. $n=10^6$ ($250\,000$ \emph{strings}). Las tres últimas filas son tramos
+ordenados de claves al azar.}\label{tab:ab}
+\end{table}
+
+\noindent Las mejoras grandes están donde antes se perdía: zonas al azar dentro de
+datos ordenados (0,45 a 0,81) y runs de claves al azar (0,26 a 0,88, salvo con
+comparador en modo rápido, donde no cambia). Las entradas
+aleatorias y con repetidos no cambian, salvo los pares (0,76 a 0,81, por la selección
+sin salto). Lo que empeoró queda en 10\% o menos, dentro del ruido, con una excepción
+de 1,27 en una entrada que tarda menos de un milisegundo. Con \emph{strings} la regla de
+ruta y las zonas midieron peor (hasta 1,61), y por eso están desactivadas para tipos
+que no se copian byte a byte.
+
+\paragraph{Lo que se probó y no se adoptó.}
+\begin{itemize}[nosep]
+\item Tamaño del buffer propio (4 a 128\,KB) y de la hoja (32 a 256): las diferencias
+  quedaron dentro del ruido. Se mantienen 16\,KB y 128.
+\item Desenrollar de a 4 la partición escalar: sin ganancia.
+\item Paso de cabeza sin salto dentro de la mezcla con galope: sin ganancia.
+\item Selección sin salto también para escalares: 10\% peor en u64, porque ahí gcc ya
+  emitía \texttt{cmov}.
+\item Mezcla sin salto para runs intercalados que no entran en el buffer: el doble de
+  lenta en \emph{organ pipe} y en una sierra regular, donde el predictor acierta.
+\end{itemize}
+
+\section{Comparación con otros ordenamientos}
+
+\begin{table}[h]\centering\small
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{3}{c}{SotSort / blitsort} & SotSort / mejor de\\
+Entrada & u32 & u64 & clave+índice & Grail, Wiki (32\,B)\\
+\midrule
+aleatoria & 0,63 & 0,72 & 1,14 & 0,60\\
+16 valores & 0,46 & 0,62 & 0,80 & 0,41\\
+$\sqrt n$ valores & 0,19 & 0,49 & 0,86 & 0,48\\
+Zipf & 0,44 & 0,50 & 0,64 & 0,50\\
+ordenada & 1,09 & 1,00 & 2,57 & 0,77\\
+invertida & 0,94 & 1,01 & 1,81 & 0,12\\
+1\% de ruido & 1,08 & 1,06 & 1,08 & 0,63\\
+cola 10\% al azar & 0,67 & 0,75 & 1,50 & 0,82\\
+\emph{organ pipe} & 0,58 & 0,70 & 1,13 & 0,69\\
+runs de $\sqrt n$ & 0,53 & 0,75 & 1,23 & 1,30\\
+runs de 63 & 0,42 & 0,48 & 0,78 & 0,75\\
+\bottomrule
+\end{tabular}
+\caption{Ordenamientos de memoria constante, $n=10^6$: cociente de tiempos, menos de 1
+gana SotSort. ``Clave+índice'' es una palabra de 64 bits comparada por su mitad alta, sin
+partición vectorial. blitsort no admite registros de 32 bytes.}\label{tab:o1}
+\end{table}
+
+\begin{table}[h]\centering\small
+\begin{tabular}{lrrrrrr}
+\toprule
+Entrada (u64) & SotSort O(1) & SotSort rápido & blitsort & fluxsort & glidesort & driftsort\\
+\midrule
+aleatoria & 23,5 & 21,0 & 32,6 & 27,4 & 30,3 & 26,6\\
+Zipf & 13,7 & 13,6 & 27,5 & 16,3 & 28,3 & 13,4\\
+ordenada & 0,3 & 0,3 & 0,3 & 0,3 & 0,6 & 0,4\\
+invertida & 0,6 & 0,6 & 0,6 & 0,7 & 0,9 & 0,8\\
+1\% de ruido & 10,8 & 12,1 & 10,2 & 24,2 & 30,5 & 20,1\\
+cola 10\% al azar & 5,6 & 7,6 & 7,4 & 6,9 & 5,1 & 6,6\\
+\emph{organ pipe} & 2,8 & 3,6 & 4,0 & 3,2 & 1,9 & 4,9\\
+runs de $\sqrt n$ & 25,4 & 22,3 & 33,7 & 26,8 & 12,9 & 44,0\\
+runs de 63 & 23,6 & 21,8 & 49,4 & 29,4 & 30,8 & 28,0\\
+\bottomrule
+\end{tabular}
+\caption{Milisegundos, $n=10^6$ enteros de 64 bits, un hilo. ``Rápido'' usa un buffer
+completo. Se omiten las filas de 16 y $\sqrt n$ valores, que el modo rápido resuelve con
+un conteo.}\label{tab:abs}
+\end{table}
+
+\noindent Con enteros de 32 y 64 bits, el modo O(1) queda por debajo de blitsort en 16
+de 22 casos (0,19 a 0,75) y a la par en los otros seis (0,94 a 1,09). Con un comparador
+que no admite la partición vectorial pierde en 7 de las 11 entradas (1,08 a 2,57; lo
+peor, la entrada ordenada) y gana en las otras cuatro (0,64 a 0,86). Contra los ordenamientos con memoria
+lineal, el modo rápido gana en aleatoria y pierde con glidesort en \emph{organ pipe},
+cola al azar y runs de $\sqrt n$ (1,4 a 1,9 veces en u64). Para $n=10^7$ enteros
+aleatorios: 280\,ms el modo rápido, 364 el modo O(1), 362 glidesort, 375 fluxsort, 392
+driftsort y 463 blitsort. Memoria adicional con $n=10^7$ (80\,MB de datos): menos de
+0,5\,MB en modo O(1) y unos 40\,MB en modo rápido.
+
+\paragraph{Comparaciones y adversarios.} En entrada aleatoria SotSort hace
+$1{,}11\lg n!$ comparaciones; todos los medidos están entre 1,07 y 1,29. Contra el
+adversario de McIlroy con posiciones congeladas al azar, el máximo fue $1{,}14\,n\lg n$
+(0,65 blitsort, 1,96 driftsort, 3,67 ipnsort); ninguno mostró comportamiento
+cuadrático. El adversario perezoso del capítulo 1, contra el quicksort solo: con la
+línea de la versión 6.1, 20 a 27 comparaciones por elemento para $n$ de 1000 a 8000;
+sin ella (\texttt{-DSOT\_V6\_BUG}), 167, 335, 668 y 1335, es decir $n/6$.
+
+\section{Planificación fuera de orden (experimental)}\label{sec:ooo}
+Cada rango pendiente del quicksort estable es una tarea, lista apenas termina la
+partición que la creó. Los trabajadores toman tareas de una cola acotada; no hay rondas
+ni barreras. El buffer compartido era una dependencia falsa: en modo completo la tarea
+sobre $[l,r)$ usa $\mathit{aux}[l..r)$. La primera partición se hace en paralelo. La
+corrección reutiliza el invariante del quicksort, que habla de un conjunto de
+intervalos pendientes (sección 14 de las demostraciones).
+
+\begin{table}[h]\centering\small
+\begin{tabular}{lcccccc}
+\toprule
+ & \multicolumn{2}{c}{u64} & \multicolumn{2}{c}{128 bytes} & \multicolumn{2}{c}{\emph{strings}}\\
+Entrada & $10^6$ & $10^7$ & 250 mil & $10^6$ & 250 mil & $10^6$\\
+\midrule
+aleatoria & 0,85 & 0,83 & 0,72 & 1,04 & 0,59 & 0,78\\
+16 valores & 0,67 & 0,77 & 0,69 & 1,09 & 0,76 & 1,10\\
+$\sqrt n$ valores & 0,69 & 0,84 & 0,71 & 1,15 & 0,58 & 1,04\\
+mitad un solo valor & 0,83 & 0,69 & 0,72 & 0,88 & 0,69 & 0,94\\
+mitades desbalanceadas & 0,56 & 0,66 & 0,78 & 0,96 & 0,63 & 0,58\\
+1\% de ruido (delegado) & 1,01 & 1,05 & 0,98 & 0,97 & 0,98 & 1,11\\
+\emph{organ pipe} (delegado) & 1,17 & 1,28 & 1,00 & 1,06 & 0,92 & 0,94\\
+\bottomrule
+\end{tabular}
+\caption{Tiempo del planificador / tiempo del modo paralelo de v8-r, con 2 hilos. Menos
+de 1 gana el planificador. Con 250 mil elementos el modo paralelo no se activa.}\label{tab:ooo}
+\end{table}
+
+\noindent Gana donde el modo paralelo no se activa (0,58 a 0,78) y con entradas
+desbalanceadas. Con $10^6$ o más queda entre 0,56 y 1,15; con registros de 128 bytes,
+entre 0,88 y 1,15. Las entradas con runs se delegan al modo actual (0,92 a 1,28). La
+aceleración sobre un hilo fue de 1,27 a 2,43. \textbf{Decisión:} queda como
+experimental. El único cambio que los datos justifican es usar tareas cuando
+$n<2^{18}$. Solo se midió con 2 núcleos: no hay datos de escalabilidad. La variante con
+tareas por bloque y por rotación se descartó sin prototipo, porque su paralelismo
+interno es $O(\lg(\lambda/B))$. La idea no es nueva: es quicksort paralelo por tareas
+(Cilk, TBB) con un modelo de dependencias como el de StarSs/OmpSs; las citas están
+hechas de memoria y hay que verificarlas.
+
+\section{Limitaciones}
+\begin{itemize}[nosep]
+\item Una sola máquina, virtualizada y compartida; sin contadores de hardware; sin ARM.
+\item Las constantes de las sondas y de la regla de ruta se ajustaron en esa máquina y
+  sobre varias de las mismas entradas con las que después se compara: las filas de datos
+  con estructura de las tablas~\ref{tab:o1} y~\ref{tab:abs} son optimistas.
+\item Si el comparador lanza una excepción se pueden perder elementos.
+\item Nada está verificado mecánicamente; la correspondencia entre el pseudocódigo y el
+  código se apoya en pruebas diferenciales (19\,506 casos sin fallas, más las variantes
+  con AVX2, sin SIMD, clang y los \emph{sanitizers}).
+\item Los capítulos 1 y 2 del libro no se pudieron recompilar: se perdieron su archivo
+  de estilos y los datos de siete figuras. Se entregan como estaban, con esta adenda al
+  final.
+\end{itemize}
+\end{document}

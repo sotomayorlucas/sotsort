@@ -1,0 +1,1258 @@
+\documentclass[10pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[margin=2.2cm]{geometry}
+\usepackage{amsmath,amssymb,amsthm,mathtools}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage[colorlinks=true,linkcolor=blue!50!black,citecolor=blue!50!black]{hyperref}
+\usepackage[spanish,ruled,vlined,linesnumbered,noend]{algorithm2e}
+
+% ---------------------------------------------------------------- algorithm2e
+\renewcommand{\algorithmcfname}{Algoritmo}
+\SetKwInput{KwIn}{Entrada}
+\SetKwInput{KwOut}{Salida}
+\SetKwProg{Fn}{función}{}{}
+\SetKw{KwRet}{devolver}
+\SetKw{KwTo}{hasta}
+\SetKw{KwBreak}{cortar}
+\SetKw{KwCont}{continuar}
+\SetKw{KwAnd}{y}
+\SetKw{KwOr}{o}
+\SetKw{KwNot}{no}
+\SetKwFor{ForEach}{para cada}{hacer}{}
+\SetKwFor{For}{para}{hacer}{}
+\SetKwFor{While}{mientras}{hacer}{}
+\SetKwIF{If}{ElseIf}{Else}{si}{entonces}{si no, si}{si no}{}
+\SetCommentSty{textit}
+\SetKwComment{tcp}{$\triangleright$\ }{}
+\SetAlgoNlRelativeSize{-1}
+\setlength{\algomargin}{1.6em}
+
+\SetKwFunction{SotSort}{SotSort}
+\SetKwFunction{Ordenado}{YaOrdenado}
+\SetKwFunction{PocosGiros}{PocosGiros}
+\SetKwFunction{Natural}{MergeNatural}
+\SetKwFunction{Potencia}{Potencia}
+\SetKwFunction{FusTope}{FusionarTope}
+\SetKwFunction{Respaldo}{MergeRespaldo}
+\SetKwFunction{Quick}{QuickEstable}
+\SetKwFunction{Pivote}{Pivote}
+\SetKwFunction{Part}{ParticiónEstable}
+\SetKwFunction{PartBloque}{ParticiónBloque}
+\SetKwFunction{Fusionar}{Fusionar}
+\SetKwFunction{Rotar}{Rotar}
+\SetKwFunction{TRF}{TripleReversiónFusionada}
+\SetKwFunction{Hoja}{Hoja}
+\SetKwFunction{PingPong}{PingPongPot2}
+\SetKwFunction{Parity}{ParityMerge}
+\SetKwFunction{MIzq}{MergeIzq}
+\SetKwFunction{MDer}{MergeDer}
+\SetKwFunction{SymMerge}{SymMerge}
+\SetKwFunction{Insercion}{Inserción}
+\SetKwFunction{FinAsc}{FinAsc}
+\SetKwFunction{FinDesc}{FinDesc}
+\SetKwFunction{Aleatorio}{Aleatorio}
+\SetKwFunction{CoRango}{CoRango}
+\SetKwFunction{Conteo}{Conteo}
+\SetKwFunction{Disp}{Disponible}
+\SetKwFunction{Galope}{Galope}
+\SetKwFunction{Paralelo}{Paralelo}
+\SetKwFunction{PlanF}{Plan}
+\SetKwFunction{PorClave}{OrdenPorClave}
+\SetKwFunction{Rapido}{OrdenRápido}
+\SetKwFunction{Reservar}{Reservar}
+\SetKwFunction{PartVec}{PartBloqueVec}
+
+% ---------------------------------------------------------------- teoremas
+\theoremstyle{plain}
+\newtheorem{teorema}{Teorema}[section]
+\newtheorem{lema}[teorema]{Lema}
+\newtheorem{corolario}[teorema]{Corolario}
+\theoremstyle{definition}
+\newtheorem{definicion}[teorema]{Definición}
+\newtheorem{supuesto}{Supuesto}
+\theoremstyle{remark}
+\newtheorem{observacion}[teorema]{Observación}
+\renewcommand{\proofname}{Demostración}
+
+% ---------------------------------------------------------------- notación
+\newcommand{\lt}{\prec}
+\newcommand{\nlt}{\not\prec}
+\newcommand{\les}{\preccurlyeq}
+\newcommand{\eqv}{\sim}
+\newcommand{\lts}{\prec_{s}}
+\newcommand{\cat}{\mathbin{+\!\!+}}
+\newcommand{\buf}{\mathit{buf}}
+\newcommand{\Bsz}{B}
+\newcommand{\leaf}{L}
+\newcommand{\etq}{\tau}
+\newcommand{\elems}{\operatorname{elem}}
+\newcommand{\filt}{\operatorname{filtro}}
+\newcommand{\Mrg}{\mathcal{M}}
+\newcommand{\rev}{\operatorname{rev}}
+\newcommand{\hoare}[3]{\{\,#1\,\}\;\;#2\;\;\{\,#3\,\}}
+\newcommand{\seg}[3]{\ensuremath{#1[#2\mathinner{.\,.}#3)}}
+\newcommand{\sortd}{\operatorname{ord}}
+\newcommand{\coh}{\operatorname{coh}}
+
+\title{\textbf{SotSort}\\[3pt]\large Pseudocódigo, demostraciones de corrección (lógica de Hoare)\\ y análisis de complejidad --- versiones 6.1 a 8-r}
+\author{Lucas Sotomayor}
+\date{17 de noviembre de 2026 --- borrador para revisión}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+SotSort es un algoritmo de ordenamiento estable, sin recursión y con memoria
+auxiliar constante: un buffer de $\Bsz=512$ elementos y pilas de tamaño acotado.
+Combina un quicksort estable cuya partición se construye por bloques y rotaciones,
+hojas ordenadas por \emph{parity merges} y, para datos con estructura, un merge por
+runs naturales con el criterio de powersort. Este documento da el pseudocódigo
+completo de la versión 6.1 y demuestra, para cada procedimiento, su corrección
+total como tripla de Hoare (invariantes de lazo y variantes para la terminación), la
+estabilidad del resultado, la cota de memoria, la profundidad de cada pila y cotas
+de peor caso para movimientos y comparaciones.
+\end{abstract}
+
+\tableofcontents
+
+%======================================================================
+\section{Alcance, supuestos y una corrección surgida de la prueba}
+
+\paragraph{Qué se demuestra.} Para el pseudocódigo de este documento:
+(i) corrección total de cada procedimiento como tripla de Hoare, con invariantes y
+variantes; (ii) que \SotSort devuelve la \emph{única} permutación estable ordenada de
+la entrada (Teorema~\ref{thm:main}); (iii) memoria auxiliar constante y cotas de cada
+pila; (iv) cotas de peor caso: $O(n\log^2 n)$ movimientos y
+$O\!\big(n\log n + \tfrac{n}{\Bsz}\log^3 n\big)$ comparaciones.
+
+\paragraph{Qué \emph{no} se demuestra.}
+\begin{itemize}[nosep]
+\item La equivalencia entre este pseudocódigo y la implementación en C++
+  (\texttt{stable\_qsort.hpp}). Esa correspondencia está respaldada por pruebas
+  (fuzzing contra \texttt{std::stable\_sort}: 6557 casos sin fallas con
+  gcc+ASan/UBSan y con clang), no por una demostración.
+\item Ninguna afirmación de rendimiento real. Las mediciones contra blitsort son
+  experimentales.
+\item Las demostraciones son manuales y no están verificadas mecánicamente. Un paso
+  natural sería formalizarlas en Why3, Dafny o Coq.
+\end{itemize}
+
+\paragraph{Nota de esta edición (v8-r).} Las secciones 1 a 11 describen la versión 6.1
+con $\Bsz=512$. La sección~\ref{sec:rapido} agrega el modo rápido de la versión 8. La
+sección~\ref{sec:v8r} agrega los cambios de la versión 7 (buffer propio de unos 16\,KB,
+pivote con posiciones pseudoaleatorias, partición vectorial) y los de la reconstrucción
+v8-r; la sección~\ref{sec:ooo}, un planificador experimental. El archivo
+\texttt{stable\_qsort.hpp} y las cifras de pruebas que se mencionan abajo son de las
+versiones originales, cuyo código se perdió; las cifras vigentes están en la
+sección~\ref{sec:v8r-pruebas}.
+
+\begin{supuesto}\label{sup:orden}
+$\lt$ es un orden débil estricto (Def.~\ref{def:swo}) sobre el tipo de los elementos,
+y su evaluación es total, determinista y sin efectos laterales.
+\end{supuesto}
+\begin{supuesto}\label{sup:ident}
+Mover un elemento preserva su identidad. Las \emph{copias} (pivote $p$, cota inferior
+$\mathit{lb}$, muestras) solo se usan como argumento de $\lt$, nunca se escriben en
+el arreglo.
+\end{supuesto}
+\begin{supuesto}\label{sup:n}
+$n < 2^{63}$, constantes $\Bsz = 512$, $\leaf = 128 \le \Bsz$ y $N_9 = 8192$.
+\end{supuesto}
+
+\paragraph{Corrección surgida de la demostración (v6 $\to$ v6.1).}
+Al demostrar la cota de profundidad de \Quick (Lema~\ref{lem:prof}) apareció un hueco.
+El paso que separa el bloque de elementos equivalentes al pivote no consumía
+presupuesto del respaldo introsort. Un adversario podía encadenar muchos de esos
+pasos, cada uno quitando pocos elementos, y la profundidad dejaba de ser $O(\log n)$.
+En v6.1 ese paso descuenta presupuesto cuando el bloque separado tiene menos de
+$1/16$ del rango (líneas 12 y 18 del Algoritmo~\ref{alg:quick}). El cambio se aplicó
+también al código C++: los tests siguen sin fallas y el rendimiento quedó dentro del
+ruido de medición.
+
+%======================================================================
+\section{Modelo y lemas base}
+
+\begin{definicion}[Orden débil estricto]\label{def:swo}
+Una relación $\lt$ es un \emph{orden débil estricto} si es irreflexiva
+($x\nlt x$), transitiva y la \emph{incomparabilidad}
+$x\eqv y \iff x\nlt y \wedge y\nlt x$ es transitiva. Se escribe
+$x\les y \iff y\nlt x$.
+\end{definicion}
+
+\begin{lema}[Propiedades]\label{lem:swo}
+Si $\lt$ es un orden débil estricto, entonces:
+\begin{enumerate}[label=(\alph*),nosep]
+\item $\eqv$ es una relación de equivalencia;
+\item (transitividad negativa) $x\lt z \Rightarrow x\lt y \vee y\lt z$ para todo $y$;
+\item $x\lt y \wedge y\les z \Rightarrow x\lt z$ \quad y \quad $x\les y\wedge y\lt z \Rightarrow x\lt z$;
+\item $\les$ es transitiva y total;
+\item $x\eqv y \Rightarrow (x\lt p \Leftrightarrow y\lt p)\wedge(p\lt x\Leftrightarrow p\lt y)$.
+\end{enumerate}
+\end{lema}
+\begin{proof}
+(a) Reflexiva por irreflexividad, simétrica por definición y transitiva por hipótesis.
+(b) Supongamos $x\lt z$, $x\nlt y$ y $y\nlt z$. Si fuera $y\lt x$, por transitividad
+$y\lt z$, contradicción; luego $x\eqv y$. Si fuera $z\lt y$, entonces
+$x\lt z\lt y$ da $x\lt y$, contradicción; luego $y\eqv z$. Por (a), $x\eqv z$, lo que
+contradice $x\lt z$.
+(c) Para la primera, aplicando (b) a $x\lt y$ con intermedio $z$ se obtiene
+$x\lt z\vee z\lt y$; como $z\nlt y$, queda $x\lt z$. La segunda es simétrica.
+(d) Transitividad: si $y\nlt x$, $z\nlt y$ y $z\lt x$, (b) da $z\lt y\vee y\lt x$,
+contradicción. Totalidad: si $x\not\les y$ entonces $y\lt x$, y por asimetría
+($x\lt y\wedge y\lt x\Rightarrow x\lt x$) $x\nlt y$, es decir, $y\les x$.
+(e) Si $x\lt p$ y $y\nlt p$, entonces $p\les y$ y por (c) $x\lt y$, lo que contradice
+$x\eqv y$. El resto es análogo.
+\end{proof}
+
+\begin{definicion}[Etiquetas, orden estable y salida esperada]\label{def:omega}
+Sea $A_0[0..n)$ la entrada. El elemento $A_0[i]$ lleva la \emph{etiqueta}
+$\etq(A_0[i]) = i$, que lo acompaña en cada movimiento (Supuesto~\ref{sup:ident}).
+Se define
+\[
+e \lts f \iff e\lt f \;\vee\; (e\eqv f \wedge \etq(e)<\etq(f)).
+\]
+Por el Lema~\ref{lem:swo}(d), $\lts$ es un orden total estricto sobre los elementos
+de $A_0$. Se denota $\Omega$ a la única disposición de esos elementos creciente según
+$\lts$. La especificación de un ordenamiento estable es: \emph{la salida es
+$\Omega$}.
+\end{definicion}
+
+\begin{definicion}[Ordenada, coherente]
+Una secuencia $S=\langle s_0,\dots,s_{k-1}\rangle$ está \emph{ordenada}, y se escribe
+$\sortd(S)$, si $\forall i<j:\ s_j\nlt s_i$. Es \emph{coherente}, $\coh(S)$, si
+$\forall i<j:\ s_i\eqv s_j\Rightarrow\etq(s_i)<\etq(s_j)$. Se escribe $\elems(S)$
+para el conjunto de sus elementos; es un conjunto porque las etiquetas son distintas.
+\end{definicion}
+
+\begin{lema}\label{lem:coh}
+$S$ es creciente según $\lts$ si y solo si $\sortd(S)\wedge\coh(S)$. En particular,
+si $\elems(S)=\elems(\Omega[I])$ para un intervalo $I$ y vale
+$\sortd(S)\wedge\coh(S)$, entonces $S=\Omega[I]$.
+\end{lema}
+\begin{proof}
+($\Rightarrow$) Es inmediato. ($\Leftarrow$) Para $i<j$, si $s_i\lt s_j$ no hay nada
+que probar. Si no, como $s_j\nlt s_i$, se tiene $s_i\eqv s_j$ y la coherencia da
+$\etq(s_i)<\etq(s_j)$. Para la segunda parte: $\Omega[I]$ es creciente según $\lts$,
+y un conjunto finito tiene una única disposición creciente bajo un orden total.
+\end{proof}
+
+\begin{definicion}[Operación OE]
+Una transformación $S\mapsto S'$ con $\elems(S')=\elems(S)$ \emph{preserva el orden
+de equivalentes} (es OE) si, para todo par $x\eqv y$, que $x$ preceda a $y$ en $S$
+implica que $x$ preceda a $y$ en $S'$.
+\end{definicion}
+
+\begin{lema}\label{lem:oe}
+(a) Una operación OE preserva la coherencia. (b) La composición de operaciones OE es
+OE. (c) Una operación que reordena un subrango $[l,r)$ y deja fijo el resto es OE
+sobre el arreglo si y solo si lo es sobre $[l,r)$.
+\end{lema}
+\begin{proof}
+(a) y (b) son inmediatas de la definición. (c) El orden relativo entre un elemento
+de adentro y uno de afuera no cambia, porque las posiciones de afuera quedan fijas y
+las de adentro siguen siendo un mismo intervalo.
+\end{proof}
+
+\begin{lema}[Rotación segura]\label{lem:rotsegura}
+Pasar de $X\cat Y$ a $Y\cat X$ es OE si y solo si no existen $x\in X$, $y\in Y$ con
+$x\eqv y$.
+\end{lema}
+\begin{proof}
+Los pares que están ambos en $X$ o ambos en $Y$ conservan su orden. Los únicos pares
+que se invierten son los de la forma $(x,y)$ con $x\in X$, $y\in Y$.
+\end{proof}
+
+\begin{definicion}[Filtro y partición estable]
+$\filt(P,S)$ es la subsecuencia de los elementos de $S$ que cumplen $P$. La partición
+estable es $\mathrm{Part}_P(S)=\filt(P,S)\cat\filt(\neg P,S)$. Un predicado $P$ es
+\emph{$\eqv$-invariante} si $x\eqv y\Rightarrow P(x)=P(y)$.
+\end{definicion}
+
+\begin{lema}\label{lem:part}
+(a) Si $P$ es $\eqv$-invariante, $S\mapsto\mathrm{Part}_P(S)$ es OE.
+(b) Los predicados $P_<(x)\equiv x\lt p$ y $P_\le(x)\equiv p\nlt x$ son
+$\eqv$-invariantes.
+(c) Si $\sortd(S)$, entonces $S=\mathrm{Part}_{P_<}(S)=\mathrm{Part}_{P_\le}(S)$.
+\end{lema}
+\begin{proof}
+(a) Dos elementos equivalentes terminan del mismo lado y cada lado conserva el orden
+de $S$. (b) Es el Lema~\ref{lem:swo}(e). (c) Sean $i<j$ con $P_<(s_j)$ y
+$\neg P_<(s_i)$, es decir, $s_j\lt p$ y $p\les s_i$. Por el Lema~\ref{lem:swo}(c),
+$s_j\lt s_i$, lo que contradice $\sortd(S)$. Por lo tanto los elementos que cumplen
+$P_<$ preceden a los que no. Para $P_\le$: con $p\nlt s_j$ y $p\lt s_i$, el
+Lema~\ref{lem:swo}(c) da $s_j\lt s_i$, la misma contradicción.
+\end{proof}
+
+\begin{definicion}[Merge estable]\label{def:merge}
+Dadas $X$ e $Y$ ordenadas, $\Mrg(X,Y)$ es el único entrelazado $Z$ de $X$ e $Y$ que
+preserva el orden interno de cada una, está ordenado y en el que, si $x\in X$,
+$y\in Y$ y $x\eqv y$, $x$ precede a $y$.
+\end{definicion}
+
+\begin{lema}[Merge]\label{lem:merge}
+Sean $X[0..a)$ e $Y[0..b)$ ordenadas y $Z=\Mrg(X,Y)$.
+\begin{enumerate}[label=(\alph*),nosep]
+\item \emph{Paso de cabeza.} Si $Z[0..k)=\Mrg(X[0..h_x),Y[0..h_y))$ con $h_x<a$ y
+  $h_y<b$, entonces $Z[k]=Y[h_y]$ si $Y[h_y]\lt X[h_x]$ y $Z[k]=X[h_x]$ en caso
+  contrario.
+\item \emph{Paso de cola.} Si $Z[N-k..N)$, con $N=a+b$, es el merge de los últimos
+  $c_x$ elementos de $X$ y los últimos $c_y$ de $Y$, con $t_x=a-1-c_x\ge 0$ y
+  $t_y=b-1-c_y\ge 0$, entonces $Z[N-1-k]=X[t_x]$ si $Y[t_y]\lt X[t_x]$ y
+  $Z[N-1-k]=Y[t_y]$ en caso contrario.
+\item \emph{Existencia y unicidad.} $\Mrg(X,Y)$ existe y es único. Además, cada
+  segmento $Z[i..j)$ es $\Mrg$ de los segmentos de $X$ e $Y$ que contiene.
+\item \emph{Estabilidad.} Si $X\cat Y$ está ordenada por partes (es decir, $X$ e $Y$
+  están ordenadas), reemplazar $X\cat Y$ por $\Mrg(X,Y)$ es OE.
+\end{enumerate}
+\end{lema}
+\begin{proof}
+(a) $Z[k]$ es el primer elemento no consumido. Los candidatos son las cabezas $X[h_x]$
+e $Y[h_y]$, porque cada secuencia está ordenada y su orden se preserva. Si
+$Y[h_y]\lt X[h_x]$, poner primero $X[h_x]$ violaría el orden; si $X[h_x]\lt Y[h_y]$,
+lo inverso; si $X[h_x]\eqv Y[h_y]$, la regla de desempate exige $X[h_x]$ primero.
+(b) Es simétrico: el último no consumido es $X[t_x]$ si es estrictamente mayor y, ante
+equivalencia, $Y[t_y]$ va después.
+(c) La existencia se obtiene por inducción aplicando (a). La unicidad, porque (a)
+determina cada posición. Un segmento de un entrelazado ordenado con la regla de
+desempate cumple las mismas propiedades.
+(d) Los pares equivalentes dentro de $X$ o de $Y$ conservan su orden. Un par $x\in X$,
+$y\in Y$ con $x\eqv y$ tenía a $x$ antes, porque $X$ está a la izquierda, y $\Mrg$ lo
+mantiene antes.
+\end{proof}
+
+\paragraph{Triplas de Hoare.} $\hoare{P}{S}{Q}$ indica \emph{corrección total}: si
+$P$ vale antes de ejecutar $S$, entonces $S$ termina y $Q$ vale al terminar. $A_1$
+denota el contenido del arreglo al entrar al procedimiento. ``$A\equiv A_1$ fuera de
+$[l,r)$'' es la condición de marco: el procedimiento solo escribe en $[l,r)$ y en
+$\buf$. Para cada lazo se da un invariante $I$ y una variante $V\in\mathbb{N}$ que
+decrece estrictamente en cada iteración.
+
+%======================================================================
+\section{Rotación}
+
+\begin{algorithm}[H]
+\caption{\textsc{Rotar} y \textsc{TripleReversiónFusionada}}\label{alg:rotar}
+\Fn{\Rotar{$l, m, r$}}{
+  $a \gets m - l$;\quad $b \gets r - m$\;
+  \lIf{$a = 0$ \KwOr $b = 0$}{\KwRet}
+  \lIf{$a \le \Bsz$}{$\buf[0..a)\gets A[l..m)$; mover $A[m..r)\to A[l..l{+}b)$ (de izquierda a derecha); $A[l{+}b..r)\gets\buf[0..a)$; \KwRet}
+  \lIf{$b \le \Bsz$}{$\buf[0..b)\gets A[m..r)$; mover $A[l..m)\to A[l{+}b..r)$ (de derecha a izquierda); $A[l..l{+}b)\gets\buf[0..b)$; \KwRet}
+  \If(\tcp*[f]{puente}){$a > b$ \KwAnd $a-b \le \Bsz$}{
+    $d \gets a-b$;\quad $\buf[0..d) \gets A[l+b..m)$\;
+    \lFor{$i \gets 0$ \KwTo $b-1$}{$A[l+b+i] \gets A[l+i]$;\; $A[l+i] \gets A[l+b+d+i]$}
+    $A[l+2b..r) \gets \buf[0..d)$; \KwRet\;
+  }
+  \If(\tcp*[f]{puente simétrico}){$b > a$ \KwAnd $b-a \le \Bsz$}{
+    $d \gets b-a$;\quad $\buf[0..d) \gets A[m..m+d)$\;
+    \lFor{$i \gets a-1$ \KwTo $0$}{$A[l+d+i] \gets A[m+d+i]$;\; $A[m+d+i] \gets A[l+i]$}
+    $A[l..l+d) \gets \buf[0..d)$; \KwRet\;
+  }
+  \TRF{$l, m, r$}\;
+}
+\BlankLine
+\Fn(\tcp*[h]{idea: \emph{trinity rotation} de blitsort}){\TRF{$l, m, r$}}{
+  \lIf{$m-l = r-m$}{intercambiar $A[l..m)$ con $A[m..r)$; \KwRet}
+  $p_a \gets l$;\; $p_b \gets m$;\; $p_c \gets m$;\; $p_d \gets r$\;
+  \For{$k \gets 1$ \KwTo $\lfloor \min(m-l,\ r-m)/2 \rfloor$}{
+    $t \gets A[{-}{-}p_b]$;\; $A[p_b] \gets A[p_a]$;\; $A[p_a{+}{+}] \gets A[p_c]$;\; $A[p_c{+}{+}] \gets A[{-}{-}p_d]$;\; $A[p_d] \gets t$\;
+  }
+  \eIf{$m-l < r-m$}{
+    \For{$k \gets 1$ \KwTo $\lfloor (p_d-p_c)/2\rfloor$}{$t \gets A[p_c]$;\; $A[p_c{+}{+}] \gets A[{-}{-}p_d]$;\; $A[p_d] \gets A[p_a]$;\; $A[p_a{+}{+}] \gets t$\;}
+  }{
+    \For{$k \gets 1$ \KwTo $\lfloor (p_b-p_a)/2\rfloor$}{$t \gets A[{-}{-}p_b]$;\; $A[p_b] \gets A[p_a]$;\; $A[p_a{+}{+}] \gets A[{-}{-}p_d]$;\; $A[p_d] \gets t$\;}
+  }
+  invertir $A[p_a..p_d)$\;
+}
+\end{algorithm}
+
+\begin{lema}[Rotar]\label{lem:rotar}
+\[
+\hoare{A[l..r)=X\cat Y,\ |X|=m-l}{\Rotar(l,m,r)}{A[l..r)=Y\cat X\ \wedge\ A\equiv A_1 \text{ fuera de } [l,r)}
+\]
+y escribe a lo sumo $2(r-l)$ elementos.
+\end{lema}
+\begin{proof}
+Sean $a=|X|$, $b=|Y|$ y, sin pérdida de generalidad, $l=0$ y $N=a+b$. Cada lazo tiene
+una cantidad fija de iteraciones, así que todas las ramas terminan.
+
+\emph{Ramas con buffer.} Si $a\le\Bsz$, $X$ queda guardado en $\buf$. Mover $Y$ hacia
+la izquierda, de izquierda a derecha, solo escribe en posiciones ya leídas, porque el
+destino precede al origen. Al final $\buf$ se copia a $[b,N)$. La rama $b\le\Bsz$ es
+simétrica: el movimiento hacia la derecha se hace de derecha a izquierda. Escrituras:
+$2a+b\le 2N$.
+
+\emph{Puente, $a>b$, $d=a-b\in[1,\Bsz]$.} Se escribe $X=A_1\cat A_2$ con $|A_1|=b$,
+$|A_2|=d$, e $Y=B_b$ con $|B_b|=b$. El invariante del lazo, en la iteración $i$
+($0\le i\le b$), es
+\[
+I(i):\ A[0..i)=B_b[0..i),\ A[i..b)=A_1[i..b),\ A[b..b{+}i)=A_1[0..i),\
+A[b{+}d{+}i..N)=B_b[i..b),\ \buf[0..d)=A_2,
+\]
+y las posiciones $[b+i,\,b+d+i)$ (que son $d\ge 1$) están \emph{libres}: su contenido
+no se usa. Para mostrar que la iteración $i$ preserva $I$: escribe en $A[b+i]$, que
+está libre porque $b+i\in[b+i,b+d+i)$, el valor $A[i]=A_1[i]$. Luego escribe en
+$A[i]$, que ya fue leída, el valor $A[b+d+i]=B_b[i]$. Las libres pasan a ser
+$[b+i+1,\,b+d+i+1)$. La variante es $b-i$. En $i=b$:
+$A[0..b)=B_b$, $A[b..2b)=A_1$, y la copia de $\buf$ a $[2b,N)$ deja
+$B_b\cat A_1\cat A_2=Y\cat X$. Escrituras: $2d+2b=2a\le 2N$. El puente simétrico es
+el mismo argumento reflejado, con el lazo descendente.
+
+\emph{Triple reversión fusionada.} Si $a=b$, intercambiar los bloques es la rotación.
+Si no, se definen
+\[
+M=\rev(X)\cat\rev(Y),\qquad F=\rev(M)=Y\cat X,\qquad\text{de modo que } F[q]=M[N-1-q].
+\]
+Explícitamente, $M[q]=X[a-1-q]$ para $q<a$ y $M[a+q]=Y[b-1-q]$ para $q<b$.
+
+Caso $a<b$. Sea $K=\lfloor a/2\rfloor$. \textbf{Lazo 1}, invariante $J_1(k)$ para
+$0\le k\le K$: las posiciones $[0,k)$ y $[N{-}k,N)$ valen $F$; $[a{-}k,a)$ y
+$[a,a{+}k)$ valen $M$; $[k,a{-}k)$ y $[a{+}k,N{-}k)$ conservan $A_0$; y además
+$p_a=k$, $p_b=a-k$, $p_c=a+k$, $p_d=N-k$. La iteración $k$ toca las posiciones
+$k<a-1-k<a+k<N-1-k$, que son distintas porque $k<K$ y $a<b$. Hace
+$A[a{-}1{-}k]\gets X[k]=M[a{-}1{-}k]$, $A[k]\gets Y[k]=F[k]$,
+$A[a{+}k]\gets Y[b{-}1{-}k]=M[a{+}k]$ y $A[N{-}1{-}k]\gets X[a{-}1{-}k]=F[N{-}1{-}k]$.
+Todos los valores leídos eran de $A_0$ por $J_1(k)$. Luego vale $J_1(k+1)$. Si $a$ es
+impar, la posición central $K$ de $X$ cumple $A_0[K]=X[K]=M[K]$, así que al terminar
+todo $[K,a+K)$ vale $M$.
+
+\textbf{Lazo 2}, invariante $J_2(j)$: $[0,K{+}j)$ vale $F$; $[K{+}j,\,a{+}K{+}j)$
+vale $M$; $[a{+}K{+}j,\,N{-}K{-}j)$ conserva $A_0$; y $[N{-}K{-}j,N)$ vale $F$. La
+iteración toma $t=A[p_c]=Y[K{+}j]$, escribe $A[p_c]\gets A[p_d{-}1]=Y[b{-}1{-}K{-}j]
+=M[a{+}K{+}j]$, $A[p_d{-}1]\gets A[p_a]=M[K{+}j]=F[N{-}1{-}K{-}j]$ y
+$A[p_a]\gets t=Y[K{+}j]=F[K{+}j]$. Las tres posiciones son distintas mientras
+$j<\lfloor(b-2K)/2\rfloor$. Al terminar, la zona que conserva $A_0$ tiene tamaño 0 o
+1 y, si es 1, es el punto fijo de $\rev(Y)$, así que también vale $M$.
+
+\textbf{Reversión final.} El centro $[p_a,p_d)=[K{+}J,\,N{-}K{-}J)$ es simétrico
+respecto de $(N{-}1)/2$ y vale $M$. Invertirlo da
+$A[q]=M[N{-}1{-}q]=F[q]$ en el centro. Por lo tanto $A=F=Y\cat X$.
+
+El caso $a>b$ es simétrico: el lazo 2 opera sobre el resto de $X$, con
+$J_2'(j)$: $[0,K{+}j)$ vale $F$, $[K{+}j,\,a{-}K{-}j)$ conserva $A_0$,
+$[a{-}K{-}j,\,N{-}K{-}j)$ vale $M$ y $[N{-}K{-}j,N)$ vale $F$, con $K=\lfloor b/2\rfloor$.
+Las lecturas de $A[p_d-1]$ caen dentro de la zona $M$ y nunca coinciden con $p_b$,
+porque $b\ge 1$.
+
+Escrituras: el lazo 1 hace 5 por cada 4 elementos, el lazo 2 hace 4 por cada 3 y la
+reversión 3 por cada 2. En total, a lo sumo $1{,}5\,N+O(1)\le 2N$ para $N\ge 2$.
+\end{proof}
+
+%======================================================================
+\section{Partición estable con memoria $O(1)$}
+
+\begin{algorithm}[H]
+\caption{Partición de bloque, partición estable y fusión}\label{alg:part}
+\Fn(\tcp*[h]{$e-s\le\Bsz$}){\PartBloque{$s, e, P$}}{
+  $m \gets 0$\;
+  \For(\tcp*[f]{sin branch}){$i \gets 0$ \KwTo $e-s-1$}{
+    $x \gets A[s+i]$;\; $t \gets P(x)$;\; $\buf[i-m] \gets x$;\; $A[s+m] \gets x$;\; $m \gets m + t$\;
+  }
+  $A[s+m..e) \gets \buf[0..e-s-m)$;\quad \KwRet $s+m$\;
+}
+\BlankLine
+\Fn{\Part{$l, r, P$}}{
+  pila $S \gets \emptyset$\tcp*{entradas $(\text{inicio}, \text{corte}, \text{nivel})$}
+  \For{$s \gets l$ \KwTo $r-1$ \textbf{con paso} $\Bsz$}{
+    $e\gets\min(s+\Bsz,\,r)$;\quad \textsf{push}$(S, (s,\ \PartBloque{$s, e, P$},\ 0))$\;
+    \lWhile{$|S|\ge 2$ \KwAnd $\mathrm{nivel}(S_{-2}) = \mathrm{nivel}(S_{-1})$}{\Fusionar{$S$}}
+  }
+  \lWhile{$|S| \ge 2$}{\Fusionar{$S$}}
+  \KwRet $\mathrm{corte}(S_0)$\;
+}
+\BlankLine
+\Fn{\Fusionar{$S$}}{
+  $(s_1, c_1, v_1) \gets S_{-2}$;\quad $(s_2, c_2, v_2) \gets S_{-1}$\;
+  \Rotar{$c_1,\ s_2,\ c_2$};\quad $S_{-2} \gets (s_1,\ c_1 + c_2 - s_2,\ \max(v_1, v_2)+1)$;\quad \textsf{pop}$(S)$\;
+}
+\end{algorithm}
+
+\begin{definicion}
+Un segmento $[s,e)$ está \emph{$P$-partido con corte $c$} si
+$A[s..e)=\mathrm{Part}_P(C)$, donde $C$ es su contenido al empezar la llamada a
+\Part, y $c=s+|\filt(P,C)|$.
+\end{definicion}
+
+\begin{lema}[ParticiónBloque]\label{lem:partbloque}
+\[
+\hoare{e-s\le\Bsz,\ A[s..e)=C}{c\gets\PartBloque(s,e,P)}{A[s..e)=\mathrm{Part}_P(C)\ \wedge\ c=s+|\filt(P,C)|}
+\]
+\end{lema}
+\begin{proof}
+Invariante para $0\le i\le e-s$: $m=|\filt(P,C[0..i))|$,
+$A[s..s{+}m)=\filt(P,C[0..i))$, $\buf[0..i{-}m)=\filt(\neg P,C[0..i))$ y
+$A[s{+}i..e)=C[i..)$. La variante es $e-s-i$.
+
+Las escrituras de la iteración $i$ caen en $A[s+m]$, con $s+m\le s+i$, una posición ya
+leída, y en $\buf[i-m]$, con $i-m<\Bsz$. Si $t$ es verdadero, $A[s+m]=x$ queda dentro
+del prefijo y $m$ crece; el valor escrito en $\buf[i-m]$ queda fuera de la zona útil,
+porque $(i{+}1)-(m{+}1)=i-m$. Si $t$ es falso, $\buf[i-m]=x$ extiende los $\neg P$ y
+la escritura en $A[s+m]$ queda fuera del prefijo útil.
+
+Al terminar, la copia final coloca $\filt(\neg P,C)$ detrás del prefijo.
+\end{proof}
+
+\begin{lema}[Fusión]\label{lem:fusion}
+Si $[s_1,s_2)$ está $P$-partido con corte $c_1$ y $[s_2,e)$ lo está con corte $c_2$,
+después de $\Rotar(c_1,s_2,c_2)$ el segmento $[s_1,e)$ está $P$-partido con corte
+$c_1+c_2-s_2$.
+\end{lema}
+\begin{proof}
+Antes de rotar, $A[s_1..e)=T_1\cat F_1\cat T_2\cat F_2$. Rotar $F_1\cat T_2$ da
+$T_1\cat T_2\cat F_1\cat F_2$, y $\filt$ de una concatenación es la concatenación de
+los filtros. El nuevo corte es $s_1+|T_1|+|T_2|$.
+\end{proof}
+
+\begin{lema}[ParticiónEstable]\label{lem:partest}
+Sea $L=r-l$ y $k=\lceil L/\Bsz\rceil$. Entonces
+\[
+\hoare{A[l..r)=C}{c\gets\Part(l,r,P)}{A[l..r)=\mathrm{Part}_P(C)\ \wedge\ c=l+|\filt(P,C)|}.
+\]
+Además, la pila nunca supera $\lfloor\log_2 k\rfloor+2$ entradas, y se hacen a lo sumo
+$3L+4L\lfloor\log_2 k\rfloor$ escrituras y exactamente $L$ evaluaciones de $P$. Si $P$
+es $\eqv$-invariante, la operación es OE.
+\end{lema}
+\begin{proof}
+\emph{Invariante del lazo externo:} las entradas de la pila, de abajo hacia arriba,
+describen segmentos contiguos $[s_0,s_1),\dots,[s_{t-1},s)$ con $s_0=l$, cada uno
+$P$-partido con su corte. Además, la entrada de nivel $v$ cubre exactamente $2^v$
+bloques, y los niveles son estrictamente decrecientes de abajo hacia arriba fuera del
+\texttt{mientras} interno. Esto último es un contador binario: apilar suma 1 y cada
+fusión de dos niveles iguales $v$ es un acarreo a $v+1$.
+
+El Lema~\ref{lem:partbloque} da el bloque nuevo partido y el Lema~\ref{lem:fusion}
+preserva el invariante en cada fusión. Variantes: $r-s$ para el lazo externo y $|S|$
+para los lazos de fusión. Al final queda una sola entrada que cubre $[l,r)$.
+
+La cantidad de entradas es la cantidad de unos del contador, a lo sumo
+$\lfloor\log_2 k\rfloor+1$, más una transitoria. Como $n<2^{63}$ y $\Bsz=2^9$, son a
+lo sumo 56 entradas; la implementación reserva 64.
+
+\emph{Escrituras.} Cada elemento participa en a lo sumo $\lfloor\log_2 k\rfloor$
+fusiones durante la fase de contador (cada una sube en 1 el nivel de su entrada) y en
+a lo sumo $\lfloor\log_2 k\rfloor$ durante el colapso final. Una fusión rota un
+subrango del segmento fusionado y, por el Lema~\ref{lem:rotar}, escribe a lo sumo
+2 por elemento del segmento. Los bloques cuestan $\le 3L$ escrituras.
+
+\emph{OE.} Es el Lema~\ref{lem:part}(a), porque el estado final es
+$\mathrm{Part}_P(C)$.
+\end{proof}
+
+%======================================================================
+\section{Merges}
+
+\begin{algorithm}[H]
+\caption{Merges con buffer y \emph{parity merge}}\label{alg:merges}
+\Fn(\tcp*[h]{$m-l\le\Bsz$}){\MIzq{$l, m, r$}}{
+  $a\gets m-l$;\quad $\buf[0..a)\gets A[l..m)$;\quad $p\gets 0$;\ $q\gets m$;\ $o\gets l$\;
+  \While{$p<a$ \KwAnd $q<r$}{
+    \leIf{$A[q]\lt\buf[p]$}{$A[o]\gets A[q]$; $q\gets q+1$}{$A[o]\gets\buf[p]$; $p\gets p+1$}
+    $o\gets o+1$\;
+  }
+  $A[o..o+a-p)\gets\buf[p..a)$\;
+}
+\BlankLine
+\Fn(\tcp*[h]{$r-m\le\Bsz$; simétrico, hacia atrás}){\MDer{$l, m, r$}}{
+  igual que \MIzq con la derecha en $\buf$, recorriendo desde el final, y tomando la
+  izquierda solo si $\buf[j-1]\lt A[i-1]$\;
+}
+\BlankLine
+\Fn(\tcp*[h]{fuera de lugar: $D$ disjunto de $X$ e $Y$}){\Parity{$X[0..a),\ Y[0..b),\ D$}}{
+  $h_x, h_y \gets 0$;\quad $t_x \gets a-1$;\quad $t_y \gets b-1$;\quad $h_d \gets 0$;\quad $t_d \gets a+b-1$\;
+  \For{$k \gets 1$ \KwTo $\min(a,b)$}{
+    $u \gets (Y[h_y] \lt X[h_x])$;\; $D[h_d{+}{+}] \gets u\,?\,Y[h_y]:X[h_x]$;\; $h_y \gets h_y{+}u$;\; $h_x \gets h_x{+}\neg u$\;
+    $v \gets (Y[t_y] \lt X[t_x])$;\; $D[t_d{-}{-}] \gets v\,?\,X[t_x]:Y[t_y]$;\; $t_x \gets t_x{-}v$;\; $t_y \gets t_y{-}\neg v$\;
+  }
+  fusionar $X[h_x..t_x{+}1)$ e $Y[h_y..t_y{+}1)$ en $D[h_d..t_d{+}1)$ con el lazo clásico\;
+}
+\end{algorithm}
+
+\begin{lema}[MergeIzq / MergeDer]\label{lem:mizq}
+\[
+\hoare{\sortd(X)\wedge\sortd(Y),\ A[l..r)=X\cat Y,\ |X|\le\Bsz}{\MIzq(l,m,r)}{A[l..r)=\Mrg(X,Y)}
+\]
+con a lo sumo $|X|+|Y|$ comparaciones. Lo mismo vale para \MDer con $|Y|\le\Bsz$.
+\end{lema}
+\begin{proof}
+Invariante: $o=l+p+(q-m)$, $A[l..o)=\Mrg(X[0..p),Y[0..q{-}m))$,
+$\buf[p..a)=X[p..)$ y $A[q..r)=Y[q{-}m..)$. Además $o\le q$, y la desigualdad es
+estricta si $p<a$; esto asegura que no se sobrescribe ningún elemento de $Y$ sin leer.
+Cada paso es el paso de cabeza (Lema~\ref{lem:merge}(a)). La variante es $(a-p)+(r-q)$.
+
+Al salir: si $p=a$, el resto de $Y$ ya está en su lugar porque $o=q$; si $q=r$, la
+copia final completa $X$. Ese resto es un segmento final de $\Mrg$ por el
+Lema~\ref{lem:merge}(c). \MDer usa el paso de cola (Lema~\ref{lem:merge}(b)) con el
+invariante simétrico.
+\end{proof}
+
+\begin{lema}[ParityMerge]\label{lem:parity}
+\[
+\hoare{\sortd(X[0..a))\wedge\sortd(Y[0..b)),\ D\cap(X\cup Y)=\emptyset}{\Parity(X,Y,D)}{D[0..a{+}b)=\Mrg(X,Y)}
+\]
+con a lo sumo $a+b$ comparaciones. Las primeras $\min(a,b)$ iteraciones no hacen
+ningún chequeo de bordes.
+\end{lema}
+\begin{proof}
+Sea $Z=\Mrg(X,Y)$, $N=a+b$ y $K=\min(a,b)$. La observación clave es que \emph{la
+cabeza y la cola son dos merges clásicos independientes}, uno hacia adelante y otro
+hacia atrás, que leen fuentes que no se modifican.
+
+\emph{Cabeza.} Invariante tras $k$ iteraciones: $h_x+h_y=k$ y
+$D[0..k)=Z[0..k)=\Mrg(X[0..h_x),Y[0..h_y))$. Para aplicar el
+Lema~\ref{lem:merge}(a) hay que garantizar $h_x<a$ y $h_y<b$ antes de cada paso. Eso
+vale porque $h_x,h_y\le k<K\le\min(a,b)$. \emph{Por eso no hacen falta chequeos de
+bordes.}
+
+\emph{Cola.} Simétricamente, $D[N{-}k..N)=Z[N{-}k..N)$ con $t_x=a-1-c_x\ge a-1-k\ge 0$
+y lo mismo para $t_y$ (Lema~\ref{lem:merge}(b)).
+
+\emph{Las dos partes no se pisan.} Como $2K\le N$, los segmentos $Z[0..K)$ y
+$Z[N{-}K..N)$ son disjuntos. Como $\Mrg$ preserva el orden interno de $X$, la cabeza
+consumió exactamente los primeros $h_x$ elementos de $X$ en $Z$ y la cola los últimos
+$c_x$. Al ser disjuntos, $h_x\le a-c_x=t_x+1$, y lo mismo para $Y$.
+
+\emph{Resto.} Por el Lema~\ref{lem:merge}(c),
+$Z[K..N{-}K)=\Mrg(X[h_x..t_x{+}1),Y[h_y..t_y{+}1))$, que es exactamente lo que
+calcula el lazo final, con la variante habitual.
+\end{proof}
+
+\begin{observacion}
+La versión ``igual largo'' de quadsort es el caso $a=b$, donde el resto es vacío.
+Usar $K=\min(a,b)$ en lugar de exigir largos casi iguales es la generalización que
+emplean las hojas de tamaño arbitrario de SotSort.
+\end{observacion}
+
+%======================================================================
+\section{Hojas}
+
+\begin{algorithm}[H]
+\caption{Inserción, ping-pong y hoja}\label{alg:hoja}
+\Fn{\Insercion{$l, r$}}{
+  \For{$i \gets l+1$ \KwTo $r-1$}{
+    \If{$A[i] \lt A[i-1]$}{
+      $v\gets A[i]$;\quad $j\gets i$\;
+      \lWhile{$j>l$ \KwAnd $v\lt A[j-1]$}{$A[j]\gets A[j-1]$; $j\gets j-1$}
+      $A[j]\gets v$\;
+    }
+  }
+}
+\BlankLine
+\Fn(\tcp*[h]{$c=2^k$, $2\le c\le\Bsz$}){\PingPong{$P[0..c)$}}{
+  $\Lambda\gets k-1$;\quad $\mathit{out}\gets(\Lambda \text{ impar})\;?\;\buf:P$\;
+  \For{$i\gets 0,2,\dots,c-2$}{
+    $x\gets P[i]$;\; $y\gets P[i{+}1]$;\; $s\gets(y\lt x)$;\; $\mathit{out}[i]\gets s\,?\,y:x$;\; $\mathit{out}[i{+}1]\gets s\,?\,x:y$\;
+  }
+  $\mathit{src}\gets\mathit{out}$;\quad $\mathit{dst}\gets(\mathit{out}=P)\,?\,\buf:P$\;
+  \For{$w\gets 2,4,\dots,c/2$}{
+    \lFor{$i\gets 0,\,2w,\,4w,\dots$}{\Parity{$\mathit{src}[i..i{+}w),\ \mathit{src}[i{+}w..i{+}2w),\ \mathit{dst}{+}i$}}
+    intercambiar $\mathit{src}$ y $\mathit{dst}$\;
+  }
+}
+\BlankLine
+\Fn(\tcp*[h]{$r-l\le\Bsz$}){\Hoja{$l, r$}}{
+  $e\gets r$;\quad $q\gets r-l$;\quad $\mathit{primero}\gets\mathbf{true}$\;
+  \While{$q>0$}{
+    $c\gets q \mathbin{\&} (-q)$;\quad $s\gets e-c$\tcp*{trozo más chico que queda}
+    \lIf{$c>1$}{\PingPong{$A[s..s{+}c)$}}
+    \If{\KwNot $\mathit{primero}$ \KwAnd $A[s+c]\lt A[s+c-1]$}{
+      \Parity{$A[s..s{+}c),\ A[s{+}c..r),\ \buf$};\quad $A[s..r)\gets\buf[0..r{-}s)$\;
+    }
+    $\mathit{primero}\gets\mathbf{false}$;\quad $e\gets s$;\quad $q\gets q-c$\;
+  }
+}
+\end{algorithm}
+
+\begin{lema}[Inserción]\label{lem:insercion}
+$\hoare{A[l..r)=C}{\Insercion(l,r)}{\sortd(A[l..r))\ \wedge\ \text{la transformación es OE}}$.
+\end{lema}
+\begin{proof}
+El invariante del lazo externo es que $A[l..i)$ es una disposición ordenada OE de
+$C[0..i{-}l)$. El elemento $v$ solo se desplaza por encima de elementos
+$A[j-1]$ con $v\lt A[j-1]$, que no son equivalentes a $v$. Se detiene ante el primero
+con $v\nlt A[j-1]$, y ese elemento queda antes de $v$, de modo que el orden entre
+equivalentes se preserva. Variantes: $r-i$ para el lazo externo y $j-l$ para el
+interno.
+\end{proof}
+
+\begin{lema}[PingPongPot2]\label{lem:pingpong}
+Con $c=2^k\le\Bsz$, $\PingPong(P)$ deja $P$ ordenado mediante una transformación OE,
+con a lo sumo $c\,k$ comparaciones.
+\end{lema}
+\begin{proof}
+Paso de pares: se intercambian solo si $y\lt x$, así que dos equivalentes conservan
+su orden. Invariante del lazo de niveles, al entrar con ancho $w$: cada bloque
+alineado $\mathit{src}[jw..(j{+}1)w)$ está ordenado y contiene exactamente los
+elementos de $P_0[jw..(j{+}1)w)$, y $\mathit{src}$ es una disposición OE de $P_0$.
+
+Cada \Parity cumple su precondición, porque $\mathit{dst}$ es disjunto de
+$\mathit{src}$, y produce $\Mrg$ de dos bloques adyacentes. Eso es OE por el
+Lema~\ref{lem:merge}(d), y el invariante vale para $2w$.
+
+Paridad: hay $\Lambda=k-1$ niveles y cada uno alterna el destino. Si el paso de pares
+escribió en $\buf$ exactamente cuando $\Lambda$ es impar, al terminar se cumple
+$\mathit{src}=P$.
+\end{proof}
+
+\begin{lema}[Hoja]\label{lem:hoja}
+$\hoare{r-l\le\Bsz,\ A[l..r)=C}{\Hoja(l,r)}{\sortd(A[l..r))\ \wedge\ \text{OE}}$, con
+$O((r-l)\log(r-l))$ comparaciones.
+\end{lema}
+\begin{proof}
+Invariante: $A[e..r)$ es una disposición ordenada OE de $C[e{-}l..)$, y
+$q=e-l$. El trozo $[s,e)$ tiene tamaño potencia de 2 (el bit más bajo de $q$) y queda
+ordenado por el Lema~\ref{lem:pingpong}.
+
+Si $A[s+c]\nlt A[s+c-1]$, la concatenación ya está ordenada y es trivialmente OE. Si
+no, \Parity escribe en $\buf$, que es disjunto y tiene capacidad suficiente porque
+$r-s\le\Bsz$, el valor $\Mrg$ del trozo (a la izquierda) y del sufijo. Eso es OE por
+el Lema~\ref{lem:merge}(d), y la copia lo devuelve a su lugar. La variante es $q$,
+que pierde un bit en cada iteración.
+\end{proof}
+
+%======================================================================
+\section{SymMerge iterativo y merge sort de respaldo}
+
+\begin{algorithm}[H]
+\caption{SymMerge iterativo y merge sort de respaldo}\label{alg:sym}
+\Fn{\SymMerge{$l_0, m_0, r_0$}}{
+  pila $W\gets[(l_0,m_0,r_0)]$\;
+  \While{$W\ne\emptyset$}{
+    $(l,m,r)\gets$ \textsf{pop}$(W)$\;
+    \lIf{$l\ge m$ \KwOr $m\ge r$ \KwOr $A[m]\nlt A[m-1]$}{\KwCont}
+    $l\gets$ primer $i\in[l,m)$ con $A[m]\lt A[i]$;\quad $r\gets$ primer $j\in[m,r)$ con $A[j]\nlt A[m-1]$\;
+    $n_l\gets m-l$;\quad $n_r\gets r-m$\;
+    \lIf{$n_l+n_r\le\Bsz$}{$\buf\gets A[l..r)$; \Parity{$\buf[0..n_l),\ \buf[n_l..n_l{+}n_r),\ A{+}l$}; \KwCont}
+    \lIf{$\min(n_l,n_r)\le\Bsz$}{\MIzq{$l,m,r$} o \MDer{$l,m,r$} según el lado chico; \KwCont}
+    \eIf{$n_l\ge n_r$}{
+      $m_1\gets l+\lfloor n_l/2\rfloor$;\quad $m_2\gets$ primer $j\in[m,r)$ con $A[j]\nlt A[m_1]$\;
+    }{
+      $m_2\gets m+\lfloor n_r/2\rfloor$;\quad $m_1\gets$ primer $i\in[l,m)$ con $A[m_2]\lt A[i]$\;
+    }
+    \Rotar{$m_1, m, m_2$};\quad $\nu\gets m_1+(m_2-m)$\;
+    apilar $(l,m_1,\nu)$ y $(\nu,m_2,r)$, \emph{el más grande primero}\;
+  }
+}
+\BlankLine
+\Fn{\Respaldo{$l, r$}}{
+  \lFor{$s\gets l,\,l{+}24,\dots$}{\Insercion{$s,\ \min(s{+}24,r)$}}
+  \For{$w\gets 24, 48, 96,\dots$ \KwAnd $w<r-l$}{
+    \lFor{$x\gets l,\,l{+}2w,\dots$ \KwAnd $x+w<r$}{\SymMerge{$x,\ x{+}w,\ \min(x{+}2w,\,r)$}}
+  }
+}
+\end{algorithm}
+
+\begin{lema}[Recorte]\label{lem:recorte}
+Sea $X\cat Y=A[l..r)$ con $X=A[l..m)$, $Y=A[m..r)$ ordenadas, y sea $Z=\Mrg(X,Y)$.
+\begin{enumerate}[label=(\alph*),nosep]
+\item Si $A[m]\nlt A[m-1]$, entonces $X\cat Y=Z$.
+\item Con $l'$ y $r'$ como en la línea 5, $Z = A[l..l')\cat\Mrg(A[l'..m),A[m..r'))\cat A[r'..r)$.
+\end{enumerate}
+\end{lema}
+\begin{proof}
+(a) Todo $x\in X$ cumple $x\les X_{\max}=A[m-1]\les A[m]\les y$ para todo $y\in Y$
+(Lema~\ref{lem:swo}(d)). Ante equivalencias, $X$ va primero; por lo tanto la
+concatenación cumple la Definición~\ref{def:merge}.
+(b) Los elementos de $A[l..l')$ cumplen $x\les A[m]$, el mínimo de $Y$. Así preceden
+a todo $Y$, incluso con equivalencia, porque son de $X$. Además preceden al resto de
+$X$ por el orden de $X$. Simétricamente, los de $A[r'..r)$ cumplen $A[m-1]\les y$,
+así que van después de todo $X$, y después del resto de $Y$ por el orden de $Y$.
+Luego son prefijo y sufijo de $Z$, y el centro es el $\Mrg$ de lo que queda
+(Lema~\ref{lem:merge}(c)).
+\end{proof}
+
+\begin{lema}[División de SymMerge]\label{lem:symsplit}
+En la rama $n_l\ge n_r$, después de \Rotar se cumple
+\[
+\Mrg(X,Y)=\Mrg(X[l..m_1),Y[m..m_2))\cat\Mrg(X[m_1..m),Y[m_2..r)),
+\]
+y la rotación es OE. Lo mismo vale en la otra rama.
+\end{lema}
+\begin{proof}
+Rama $n_l\ge n_r$. Se cumple $Y[m..m_2)\lt A[m_1]$ y $A[m_1]\les Y[m_2..r)$.
+\begin{itemize}[nosep]
+\item Todo $y\in Y[m..m_2)$ cumple $y\lt A[m_1]\les x'$ para todo
+  $x'\in X[m_1..m)$, así que $y$ precede estrictamente a $x'$.
+\item Todo $x\in X[l..m_1)$ cumple $x\les A[m_1]\les y'$ para todo
+  $y'\in Y[m_2..r)$, así que $x$ precede a $y'$, y ante equivalencia también, porque
+  $x$ es de $X$.
+\end{itemize}
+Entonces, en $Z$, todo el grupo izquierdo precede al grupo derecho, y por el
+Lema~\ref{lem:merge}(c) cada grupo es el $\Mrg$ de sus partes. La rotación intercambia
+$X[m_1..m)$ con $Y[m..m_2)$. Entre esos dos bloques no hay pares equivalentes, porque
+$y\lt A[m_1]\les x'$; por el Lema~\ref{lem:rotsegura} es OE.
+
+En la otra rama, $X[l..m_1)\les A[m_2]\lt X[m_1..m)$ y el argumento es simétrico.
+\end{proof}
+
+\begin{lema}[SymMerge]\label{lem:sym}
+Sea $s=r_0-l_0$. Entonces
+\[
+\hoare{\sortd(A[l_0..m_0))\wedge\sortd(A[m_0..r_0))}{\SymMerge(l_0,m_0,r_0)}{A[l_0..r_0)=\Mrg(\text{ambas})}
+\]
+y:
+\begin{enumerate}[label=(\alph*),nosep]
+\item la pila $W$ nunca supera $\lfloor\log_2 s\rfloor+2$ entradas;
+\item la profundidad del árbol de subproblemas es a lo sumo
+  $\log_{9/7}(s/2\Bsz)+2$;
+\item hace $O(s\log(s/\Bsz))$ escrituras;
+\item hace a lo sumo $s+\frac{s}{2\Bsz}\,D\,(3\lceil\log_2(s{+}1)\rceil+1)$
+  comparaciones, donde $D$ es la profundidad de (b).
+\end{enumerate}
+\end{lema}
+\begin{proof}
+\emph{Invariante:} los subproblemas $(l,m,r)$ que están en $W$ cubren intervalos
+disjuntos. En cada uno, $A[l..m)$ y $A[m..r)$ están ordenados. Además, si cada
+subproblema pendiente se reemplazara por su $\Mrg$, el arreglo completo en
+$[l_0,r_0)$ valdría $\Mrg$ de la entrada.
+
+Las ramas que terminan un subproblema son correctas por los
+Lemas~\ref{lem:recorte}, \ref{lem:parity} y~\ref{lem:mizq}. La rama de división es
+correcta por el Lema~\ref{lem:symsplit}.
+
+\emph{Terminación.} En una división, $n_l,n_r>\Bsz\ge 1$, así que
+$\lfloor n_l/2\rfloor\ge 1$. Los dos hijos son no vacíos y cada uno es estrictamente
+más chico que el padre. El multiconjunto de tamaños pendientes decrece en el orden de
+multiconjuntos de Dershowitz--Manna, que es bien fundado.
+
+(a) Invariante adicional: si $I_1,\dots,I_t$ son las entradas de abajo hacia arriba,
+$\sum_{j>i}|I_j|\le|I_i|$. Se mantiene porque los hijos suman a lo sumo el tamaño del
+padre y el chico queda arriba. Entonces la suma desde $I_i$ hasta el tope al menos se
+reduce a la mitad en cada paso, y $t\le\lfloor\log_2 s\rfloor+1$.
+
+(b) Un nodo interno de tamaño $\sigma$ cumple $\sigma>2\Bsz$. Si $n_l\ge n_r$,
+entonces $n_l\ge\sigma/2$ y cada hijo tiene a lo sumo
+$\sigma-\lfloor n_l/2\rfloor\le\frac34\sigma+\frac12\le\frac79\sigma$ elementos,
+porque $\sigma\ge 18$.
+
+(c) Los nodos de una misma profundidad son disjuntos. Cada nodo interno escribe a lo
+sumo $2\sigma$ (Lema~\ref{lem:rotar}) y cada hoja a lo sumo $3\sigma$.
+
+(d) Las hojas comparan a lo sumo una vez por elemento y son disjuntas, lo que da $s$.
+Cada nodo interno hace tres búsquedas binarias más una comparación inicial, y hay a lo
+sumo $s/2\Bsz$ nodos internos por nivel.
+\end{proof}
+
+\begin{lema}[MergeRespaldo]\label{lem:respaldo}
+\[\hoare{A[l..r)=C}{\Respaldo(l,r)}{\sortd(A[l..r))\ \wedge\ \text{OE}},\]
+con $O(L\log L\log(L/\Bsz))$ escrituras y
+$O(L\log L+\frac{L}{\Bsz}\log^3 L)$ comparaciones, donde $L=r-l$.
+\end{lema}
+\begin{proof}
+Invariante del lazo en $w$: los bloques alineados de ancho $w$ están ordenados, y el
+estado es una transformación OE de $C$ que no mueve elementos entre bloques. La
+inserción lo establece para $w=24$ (Lema~\ref{lem:insercion}). Cada SymMerge sobre dos
+bloques adyacentes lo extiende a $2w$ (Lemas~\ref{lem:sym} y~\ref{lem:merge}(d)).
+Hay $\lceil\log_2(L/24)\rceil$ niveles, y las cotas salen de sumar el
+Lema~\ref{lem:sym} sobre cada nivel.
+\end{proof}
+
+%======================================================================
+\section{QuickEstable}
+
+\begin{algorithm}[H]
+\caption{\textsc{QuickEstable} (v6.1) y \textsc{Pivote}}\label{alg:quick}
+\Fn{\Quick{$l_0, r_0$}}{
+  pila $S \gets [\,(l_0, r_0, \beta_0, \bot)\,]$ con $\beta_0=\lfloor\log_2(r_0-l_0)\rfloor+1$\;
+  \While{$S \neq \emptyset$}{
+    $(l, r, \beta, \mathit{lb}) \gets$ \textsf{pop}$(S)$\;
+    \While{$\mathbf{true}$}{
+      $\lambda\gets r-l$\;
+      \lIf{$\lambda \le \leaf$}{\Hoja{$l, r$}; \KwBreak}
+      \lIf{$\beta \le 0$}{\lIf{\KwNot \Ordenado{$l,r$}}{\Respaldo{$l,r$}} \KwBreak}
+      $p \gets$ \Pivote{$l, \lambda$}\tcp*{copia del valor de un elemento de $[l,r)$}
+      \If{$\mathit{lb} \ne \bot$ \KwAnd $\mathit{lb} \nlt p$}{
+        $l' \gets$ \Part{$l, r,\ x \mapsto p\nlt x$}\;
+        \lIf{$l'-l < \lambda/16$}{$\beta\gets\beta-1$}\tcp*{\textbf{nuevo en v6.1}}
+        $l\gets l'$; \KwCont\;
+      }
+      $m \gets$ \Part{$l, r,\ x \mapsto x \lt p$}\;
+      \If{$m = l$}{
+        $l' \gets$ \Part{$l, r,\ x \mapsto p\nlt x$}\;
+        \lIf{$l'-l < \lambda/16$}{$\beta\gets\beta-1$}\tcp*{\textbf{nuevo en v6.1}}
+        $l\gets l'$; \KwCont\;
+      }
+      \lIf{$\min(m-l,\ r-m) < \lambda/16$}{$\beta \gets \beta-1$}
+      \leIf{$m - l < r - m$}{\textsf{push}$(S, (m, r, \beta, p))$; $r \gets m$}{\textsf{push}$(S, (l, m, \beta, \mathit{lb}))$; $l \gets m$; $\mathit{lb} \gets p$}
+    }
+  }
+}
+\BlankLine
+\Fn{\Pivote{$l, \lambda$}}{
+  \leIf{$\lambda \le N_9$}{\KwRet ninther: mediana de 3 medianas de 3 en 9 posiciones distintas de $[l,l{+}\lambda)$}{
+    copiar $s=\min(\Bsz{-}1,\,2\lfloor\lambda^{1/3}\rfloor)$ (impar) muestras de $[l,l{+}\lambda)$ a $\buf$; \KwRet la mediana de $\buf[0..s)$}
+}
+\end{algorithm}
+
+\begin{lema}[Pivote]\label{lem:pivote}
+\Pivote no modifica $A$ y devuelve una copia del valor de algún elemento de
+$A[l..l{+}\lambda)$.
+\end{lema}
+\begin{proof}
+La mediana de 3 devuelve uno de sus 3 argumentos. Las muestras son copias de
+posiciones $l+i\cdot\mathit{step}+\mathit{step}/2<l+\lambda$, y la mediana de esas
+copias es una de ellas.
+\end{proof}
+
+\begin{definicion}[Estado de \Quick]\label{def:invq}
+Sea $A_1$ el arreglo al llamar a $\Quick(l_0,r_0)$, y supongamos que $A_1[l_0..r_0)$
+es coherente y $\elems(A_1[l_0..r_0))=\elems(\Omega[l_0..r_0))$. Un intervalo $I$ es
+\begin{itemize}[nosep]
+\item \emph{terminado} si $A[I]=\Omega[I]$;
+\item \emph{pendiente} si $\elems(A[I])=\elems(\Omega[I])$ y $\coh(A[I])$.
+\end{itemize}
+El invariante $\mathit{INV}$ dice que $[l_0,r_0)$ se descompone en intervalos
+disjuntos, cada uno terminado o pendiente; que los pendientes son exactamente los de
+la pila más, dentro del lazo interno, el actual $[l,r)$; y que, si una entrada tiene
+$\mathit{lb}\ne\bot$, todo $x$ de su intervalo cumple $x\nlt\mathit{lb}$.
+\end{definicion}
+
+\begin{teorema}[QuickEstable]\label{thm:quick}
+\[
+\hoare{\coh(A[l_0..r_0))\ \wedge\ \elems(A[l_0..r_0))=\elems(\Omega[l_0..r_0))}{\Quick(l_0,r_0)}{A[l_0..r_0)=\Omega[l_0..r_0)}.
+\]
+\end{teorema}
+\begin{proof}
+$\mathit{INV}$ vale al inicio: un único pendiente $[l_0,r_0)$. Se verifica que cada
+rama del lazo interno lo preserva. Sea $I=[l,r)$ el intervalo actual, pendiente.
+
+\emph{Hoja} (línea 7). Por el Lema~\ref{lem:hoja} queda $\sortd(A[I])$ y, como la
+operación es OE (Lema~\ref{lem:oe}(a)), $A[I]$ sigue siendo coherente. Por el
+Lema~\ref{lem:coh}, $A[I]=\Omega[I]$: el intervalo pasa a terminado.
+
+\emph{Respaldo} (línea 8). Si \Ordenado devuelve verdadero, $A[I]$ ya está ordenado,
+o era estrictamente descendente y se invirtió (Lema~\ref{lem:yaord}). En otro caso,
+el Lema~\ref{lem:respaldo} da un resultado ordenado y OE. En ambos casos el
+Lema~\ref{lem:coh} lo vuelve terminado.
+
+\emph{Partición por $P_<$} (línea 15, con $m>l$). Por el Lema~\ref{lem:partest},
+$A[I]=\filt(P_<,C)\cat\filt(\neg P_<,C)$, y la operación es OE porque $P_<$ es
+$\eqv$-invariante (Lema~\ref{lem:part}(b)). Por el Lema~\ref{lem:part}(c) aplicado a
+$\Omega[I]$, que está ordenado, $\Omega[I]$ también se parte en $l..m$ y $m..r$ con
+los mismos conjuntos. Luego $[l,m)$ y $[m,r)$ son pendientes. Todo $x$ de $[m,r)$
+cumple $x\nlt p$, lo que justifica $\mathit{lb}=p$ para ese hijo; el hijo izquierdo
+hereda su $\mathit{lb}$ porque es subconjunto.
+
+\emph{Separación de equivalentes} (líneas 10--13 y 17--19). Hay que ver que ningún
+$x\in A[I]$ cumple $x\lt p$.
+\begin{itemize}[nosep]
+\item Rama de la línea 10. Si $x\lt p$, la transitividad negativa da
+  $x\lt\mathit{lb}\vee\mathit{lb}\lt p$. Lo segundo contradice la guarda y lo primero
+  contradice el invariante sobre $\mathit{lb}$.
+\item Rama de la línea 17. Es directo: $m=l$ significa que ningún elemento cumple
+  $P_<$.
+\end{itemize}
+Entonces $P_\le(x)\iff x\eqv p$, y el bloque $[l,l')$ queda formado exactamente por
+los equivalentes a $p$, en orden coherente. Un bloque de equivalentes coherente está
+ordenado y es coherente, y por el mismo argumento de partición de $\Omega[I]$ es
+$\Omega[l..l')$: queda terminado. $[l',r)$ sigue pendiente.
+
+Al vaciarse la pila no quedan pendientes, así que $A[l_0..r_0)=\Omega[l_0..r_0)$. La
+terminación se prueba en el Lema~\ref{lem:prof}.
+\end{proof}
+
+\begin{lema}[Progreso, profundidad y pila]\label{lem:prof}
+Sea $\lambda_0=r_0-l_0$.
+\begin{enumerate}[label=(\alph*),nosep]
+\item Cada iteración del lazo interno termina el intervalo actual o lo achica
+  estrictamente; en una partición por $P_<$, los dos hijos son no vacíos.
+\item Toda cadena de intervalos anidados procesados tiene longitud a lo sumo
+  $D_Q=\beta_0+\lceil\log_{16/15}(\lambda_0/\leaf)\rceil$, es decir, $O(\log\lambda_0)$.
+\item La pila $S$ nunca supera $\lfloor\log_2\lambda_0\rfloor+1\le 64$ entradas.
+\item \Quick termina.
+\end{enumerate}
+\end{lema}
+\begin{proof}
+(a) Por el Lema~\ref{lem:pivote}, el elemento cuyo valor es $p$ está en $I$ y no
+cumple $p\lt p$, así que va a la parte derecha: $m<r$. La rama de partición exige
+$m>l$. En la separación de equivalentes, ese mismo elemento cumple $P_\le$, así que
+$l'>l$.
+
+(b) Cada paso de la cadena achica el tamaño a lo sumo por un factor $15/16$ (paso
+``bueno'') o decrementa $\beta$ (paso ``malo''); esto vale tanto para las particiones
+como para las separaciones, gracias al cambio de v6.1. Como $\beta$ se hereda y la
+cadena corta cuando $\beta\le 0$, hay a lo sumo $\beta_0$ pasos malos. Los buenos
+reducen el tamaño hasta $\leaf$ en a lo sumo $\lceil\log_{16/15}(\lambda_0/\leaf)\rceil$
+pasos.
+
+\emph{Sin el cambio de v6.1}, una separación que quita un solo elemento no consume
+$\beta$, y la cota no se puede probar.
+
+(c) Se apila el hijo grande y se continúa con el chico. Con $C$ el intervalo actual,
+el invariante $\sum_{j>i}|I_j|+|C|\le|I_i|$ se mantiene igual que en el
+Lema~\ref{lem:sym}(a).
+
+(d) Se sigue de (a) y (b): hay finitos intervalos anidados y cada uno se procesa una
+cantidad finita de veces.
+\end{proof}
+
+%======================================================================
+\section{Camino adaptativo: detección y runs naturales}
+
+\begin{algorithm}[H]
+\caption{Detección y punto de entrada}\label{alg:main}
+\Fn{\Ordenado{$l, r$}}{
+  $i\gets$ \FinAsc{$l, r$}\tcp*{bloques de 32 sin branch; ver texto}
+  \lIf{$i = r$}{\KwRet $\mathbf{true}$}
+  $e_0\gets i$\tcp*{fin del prefijo no decreciente, se reutiliza}
+  \If{$i = l+1$ \KwAnd \FinDesc{$l, r$} $= r$}{invertir $A[l..r)$; \KwRet $\mathbf{true}$}
+  \KwRet $\mathbf{false}$\;
+}
+\BlankLine
+\Fn(\tcp*[h]{heurística; no modifica $A$}){\PocosGiros{$n$}}{
+  \lIf{$n\le 2^{16}$}{\KwRet $8\cdot\mathrm{giros}(2,n) < n$}
+  \KwRet $8\cdot\sum_{c=0}^{63}\mathrm{giros}(b_c,\,b_c{+}256) < 64\cdot256$\tcp*{64 tramos equiespaciados}
+}
+\BlankLine
+\Fn{\SotSort{$A, n$}}{
+  \lIf{$n < 2$ \KwOr \Ordenado{$0, n$}}{\KwRet}
+  \lIf{\PocosGiros{$n$}}{$\mathit{adaptativo}\gets\mathbf{true}$; \Natural{$0, n, e_0$}; \KwRet}
+  \Quick{$0, n$}\;
+}
+\end{algorithm}
+
+Aquí $\FinAsc(l,r)$ es el primer $j>l$ con $A[j]\lt A[j-1]$ (o $r$ si no hay), y
+$\FinDesc(l,r)$ es el primer $j>l$ con $A[j]\nlt A[j-1]$. Ambos se calculan en
+bloques de 32 pares, acumulando las comparaciones con un \textsc{or} en un entero de
+64 bits, y después elemento por elemento. Por eso el resultado es exactamente la
+definición. Se define $\mathrm{giros}(b,e)=\#\{i\in[b,e):\ [A[i]\lt A[i-1]]\ne
+[A[i-1]\lt A[i-2]]\}$.
+
+\begin{lema}[YaOrdenado]\label{lem:yaord}
+Si \Ordenado devuelve verdadero, $A[l..r)$ queda ordenado y la transformación es OE.
+Si devuelve falso, $A$ no cambia. En ambos casos $A[l..e_0)$ es no decreciente.
+\end{lema}
+\begin{proof}
+Si $\FinAsc=r$, ningún par adyacente desciende y, por la transitividad de $\les$, todo
+el segmento está ordenado. En la rama descendente, todo par adyacente cumple
+$A[j]\lt A[j-1]$; por transitividad, todo par $i<j$ cumple $A[j]\lt A[i]$, así que no
+hay equivalentes. La inversión da un segmento ordenado y es OE (vacuamente).
+\end{proof}
+
+\begin{observacion}[La heurística no afecta la corrección]\label{obs:heur}
+\PocosGiros solo elige entre \Natural y \Quick. Ambos caminos son correctos para
+cualquier entrada (Teoremas~\ref{thm:quick} y~\ref{thm:natural}). Por lo tanto el
+muestreo puede equivocarse \emph{solo en rendimiento}.
+\end{observacion}
+
+\begin{algorithm}[H]
+\caption{Merge por runs naturales con criterio de powersort}\label{alg:natural}
+\Fn{\Potencia{$s_1, n_1, n_2, n$}}{
+  $a\gets 2s_1+n_1$;\quad $b\gets a+n_1+n_2$;\quad $\rho\gets 0$\;
+  \While{$\mathbf{true}$}{
+    $\rho\gets\rho+1$\;
+    \lIf{$a\ge n$}{$a\gets a-n$; $b\gets b-n$}
+    \lElseIf{$b\ge n$}{\KwRet $\rho$}
+    $a\gets 2a$;\quad $b\gets 2b$\;
+  }
+}
+\BlankLine
+\Fn{\Natural{$lo, hi, e_0$}}{
+  pila $R\gets\emptyset$\tcp*{entradas $(s,\ \mathit{len},\ \mathit{pot})$}
+  $i\gets lo$\;
+  \While{$i<hi$}{
+    \uIf{$i=lo$ \KwAnd $e_0>lo+1$}{$j\gets e_0$}
+    \uElseIf{$i+1<hi$ \KwAnd $A[i+1]\lt A[i]$}{$j\gets$ \FinDesc{$i, hi$}; invertir $A[i..j)$}
+    \lElse{$j\gets$ \FinAsc{$i, hi$}}
+    \lIf{$j-i<32$}{$j\gets\min(hi,\,i{+}32)$; \Insercion{$i, j$}}
+    \If{$R\ne\emptyset$}{
+      $\rho\gets$ \Potencia{$s(R_{-1})-lo,\ \mathit{len}(R_{-1}),\ j-i,\ hi-lo$}\;
+      \lWhile{$|R|\ge 2$ \KwAnd $\mathit{pot}(R_{-2})>\rho$}{\FusTope{$R$}}
+      $\mathit{pot}(R_{-1})\gets\rho$\;
+    }
+    \textsf{push}$(R,(i,\ j-i,\ 0))$;\quad $i\gets j$\;
+  }
+  \lWhile{$|R|\ge 2$}{\FusTope{$R$}}
+}
+\BlankLine
+\Fn{\FusTope{$R$}}{
+  $(s_1,n_1,\cdot)\gets R_{-2}$;\quad $(s_2,n_2,\cdot)\gets R_{-1}$\;
+  \SymMerge{$s_1,\ s_1{+}n_1,\ s_2{+}n_2$};\quad $\mathit{len}(R_{-2})\gets n_1+n_2$;\quad \textsf{pop}$(R)$\;
+}
+\end{algorithm}
+
+\begin{teorema}[MergeNatural]\label{thm:natural}
+Si $A[lo..e_0)$ es no decreciente, entonces
+\[\hoare{A[lo..hi)=C}{\Natural(lo,hi,e_0)}{\sortd(A[lo..hi))\ \wedge\ \text{OE}}.\]
+\end{teorema}
+\begin{proof}
+\emph{Invariante del lazo principal:} las entradas de $R$ describen segmentos
+contiguos que cubren $[lo,i)$. Cada uno está ordenado y contiene exactamente los
+elementos de $C$ en sus posiciones, y la transformación hecha hasta ahora es OE.
+$A[i..hi)$ no fue tocado.
+
+Detección de run: un run no decreciente ya está ordenado; uno estrictamente
+descendente no tiene equivalentes y su inversión es OE (Lema~\ref{lem:yaord}); la
+extensión por inserción es OE (Lema~\ref{lem:insercion}). \FusTope combina dos runs
+adyacentes con SymMerge, lo que es correcto y OE por los Lemas~\ref{lem:sym}
+y~\ref{lem:merge}(d).
+
+Variantes: $hi-i$ crece en cada vuelta, porque $j>i$; $|R|$ decrece en cada fusión. Al
+final queda un solo run que cubre $[lo,hi)$.
+\end{proof}
+
+\begin{lema}[Potencias]\label{lem:pot}
+Sean dos runs adyacentes $[s_1,s_1{+}n_1)$ y $[s_2,s_2{+}n_2)$ con $s_2=s_1+n_1$, y
+sean sus puntos medios normalizados $\alpha=\frac{2s_1+n_1}{2n}$ y
+$\beta=\frac{2s_2+n_2}{2n}$. Entonces:
+\begin{enumerate}[label=(\alph*),nosep]
+\item $\Potencia$ termina y devuelve
+  $\pi=\min\{\ell\ge 1:\ (\alpha,\beta] \text{ contiene un múltiplo de } 2^{-\ell}\}$;
+\item $1\le\pi\le P_{\max}:=\lceil\log_2 n\rceil$, y no hay desbordamiento si
+  $n<2^{63}$;
+\item \emph{(potencias iguales)} si dos fronteras $x<y$ tienen potencia $\ell$, alguna
+  frontera estrictamente entre ellas tiene potencia menor que $\ell$.
+\end{enumerate}
+\end{lema}
+\begin{proof}
+(a) Se tiene $0\le\alpha<\beta<1$, porque $2s_2+n_2<2n$. El lazo calcula los dígitos
+binarios de $\alpha=a/2n$ y $\beta=b/2n$ de a uno: la condición $a\ge n$ equivale a
+que el dígito actual de $\alpha$ sea 1. Devuelve la posición del primer dígito en que
+difieren, y difieren en ese dígito si y solo si
+$\lfloor 2^\ell\alpha\rfloor<\lfloor2^\ell\beta\rfloor$, es decir, si hay un múltiplo
+de $2^{-\ell}$ en $(\alpha,\beta]$.
+
+(b) Si coinciden en los primeros $\pi-1$ dígitos, $\beta-\alpha<2^{1-\pi}$. Como
+$\beta-\alpha=\frac{n_1+n_2}{2n}\ge\frac1n$, se obtiene $2^{\pi-1}<n$. Además,
+siempre $a,b<2n$ antes de duplicar, así que no hay desbordamiento.
+
+(c) Sean $d_x\in(\alpha_x,\beta_x]$ y $d_y\in(\alpha_y,\beta_y]$ múltiplos de
+$2^{-\ell}$. Ningún intervalo contiene un múltiplo de $2^{-(\ell-1)}$, así que $d_x$
+y $d_y$ son múltiplos \emph{impares} de $2^{-\ell}$. Como $\beta_x\le\alpha_y$, se
+tiene $d_x<d_y$, y $d=d_x+2^{-\ell}$ es múltiplo de $2^{-(\ell-1)}$ con
+$d_x<d<d_y$.
+
+Los intervalos $(\mu_t,\mu_{t+1}]$ entre puntos medios consecutivos, para las
+fronteras $t$ de $x$ a $y$, cubren $(\alpha_x,\beta_y]$. El intervalo que contiene a
+$d$ corresponde a una frontera de potencia $\le\ell-1$, y esa frontera no es ni $x$
+ni $y$.
+\end{proof}
+
+\begin{lema}[Pila de runs y merges por elemento]\label{lem:natcost}
+(a) Fuera del lazo de fusiones, las potencias de $R$ son estrictamente crecientes de
+abajo hacia arriba; por lo tanto $|R|\le P_{\max}+1\le 64$.
+(b) Cada elemento participa en a lo sumo $P_{\max}$ fusiones.
+(c) \Natural hace $O(n\log n\log(n/\Bsz))$ escrituras y
+$O(n\log n+\frac{n}{\Bsz}\log^3 n)$ comparaciones.
+\end{lema}
+\begin{proof}
+(a) Tras el lazo de fusiones, $\mathit{pot}(R_{-2})\le\rho$. Supongamos que hay
+igualdad. La frontera guardada en $R_{-2}$, llamémosla $x$, y la nueva, $z$, tienen
+potencia $\rho$. Por el Lema~\ref{lem:pot}(c), hay una frontera $y$ estrictamente
+entre ellas con potencia menor que $\rho$. Esa frontera ya fue resuelta, porque está
+dentro del run $R_{-1}$. Cuando $y$ llegó, $x$ ya estaba en la pila y todas las
+entradas sobre $x$ tenían potencia mayor que la de $x$, que a su vez es mayor que la
+de $y$. Entonces el lazo de fusiones habría resuelto también a $x$, lo cual es una
+contradicción.
+
+(b) Invariante: inmediatamente después de que el run de un elemento $e$ se fusiona
+resolviendo una frontera de potencia $q$, toda frontera pendiente adyacente a ese run
+tiene potencia menor que $q$:
+\begin{itemize}[nosep]
+\item la de la izquierda, por (a);
+\item la de la derecha, porque es la frontera entrante, que se fusionó justamente por
+  ser menor.
+\end{itemize}
+Las fusiones posteriores conservan esa propiedad: absorber un vecino deja como nueva
+frontera adyacente una que es más chica todavía. Así, las potencias resueltas que
+involucran a $e$ forman una sucesión estrictamente decreciente de valores en
+$[1,P_{\max}]$.
+
+(c) Cada fusión es un SymMerge (Lema~\ref{lem:sym}), y por (b) cada elemento entra en
+$O(\log n)$ de ellos. A eso se suman $O(n)$ por detección y $O(32\,n)$ por inserción.
+\end{proof}
+
+%======================================================================
+\section{Teorema principal}
+
+\begin{teorema}[Corrección total de SotSort]\label{thm:main}
+Bajo los Supuestos~\ref{sup:orden}--\ref{sup:n},
+\[
+\hoare{A=A_0,\ |A_0|=n}{\SotSort(A,n)}{A=\Omega}.
+\]
+\end{teorema}
+\begin{proof}
+$A_0$ es coherente porque las etiquetas son los índices. Hay tres casos.
+\begin{itemize}[nosep]
+\item Si $n<2$ o \Ordenado devuelve verdadero: $A$ queda ordenado y OE
+  (Lema~\ref{lem:yaord}), luego coherente. Por el Lema~\ref{lem:coh} con $I=[0,n)$,
+  $A=\Omega$.
+\item Si \PocosGiros devuelve verdadero: $A$ no cambió desde \Ordenado,
+  $A[0..e_0)$ es no decreciente y el Teorema~\ref{thm:natural} da un resultado
+  ordenado y OE. Por el Lema~\ref{lem:coh}, $A=\Omega$.
+\item En otro caso, $A=A_0$ cumple la precondición del Teorema~\ref{thm:quick} con
+  $[0,n)$, que da $A=\Omega$.
+\end{itemize}
+La terminación se sigue de la de cada componente.
+\end{proof}
+
+%======================================================================
+\section{Complejidad}
+
+\begin{teorema}[Memoria]\label{thm:mem}
+SotSort usa, además del arreglo:
+\begin{itemize}[nosep]
+\item un buffer de $\Bsz$ elementos;
+\item a lo sumo $64+2$ copias de elementos: $\mathit{lb}$ en la pila de \Quick, más
+  $p$ y $\mathit{lb}$ actuales;
+\item pilas de tamaño acotado: \Quick ($\le 64$), \Part ($\le 57$),
+  \SymMerge ($\le 64$) y \Natural ($\le 64$), todas por debajo de las 96 entradas
+  reservadas, más $O(1)$ escalares.
+\end{itemize}
+Todo esto es independiente de $n$ para $n<2^{63}$, y no se usa recursión ni memoria
+dinámica.
+\end{teorema}
+\begin{proof}
+Lemas~\ref{lem:partest}, \ref{lem:sym}(a), \ref{lem:prof}(c) y~\ref{lem:natcost}(a).
+\end{proof}
+
+\begin{teorema}[Peor caso]\label{thm:cost}
+SotSort hace $O(n\log^2 n)$ movimientos y
+$O\!\big(n\log n+\frac{n}{\Bsz}\log^3 n\big)$ comparaciones.
+\end{teorema}
+\begin{proof}
+\emph{Camino \Quick.} Por el Lema~\ref{lem:prof}(b), cada elemento pertenece a
+$O(\log n)$ intervalos procesados. En cada uno, el intervalo de tamaño $\lambda$
+cuesta:
+\begin{itemize}[nosep]
+\item a lo sumo $2\lambda$ comparaciones de partición (Lema~\ref{lem:partest}) más
+  $O(\lambda^{1/3})$ del pivote;
+\item $O(\lambda\log(\lambda/\Bsz))$ escrituras.
+\end{itemize}
+Sumando por niveles de anidamiento, que son disjuntos en cada nivel, se obtienen
+$O(n\log n)$ comparaciones y $O(n\log n\log(n/\Bsz))$ escrituras. Las hojas suman
+$O(n\log\leaf)$, y los respaldos están acotados por el Lema~\ref{lem:respaldo} sobre
+intervalos disjuntos.
+
+\emph{Camino natural.} Lema~\ref{lem:natcost}(c).
+\end{proof}
+
+\begin{observacion}
+El término $\frac{n}{\Bsz}\log^3 n$ viene de las búsquedas binarias en los nodos
+internos de SymMerge. Con $\Bsz=512$ y $n\le 2^{40}$ es menor que $n$, pero como
+$\Bsz$ es constante, asintóticamente domina a $n\log n$. No se demuestra aquí si una
+variante con la cota $O(m\log(n/m+1))$ de Kim y Kutzner lo elimina.
+\end{observacion}
+
+\input{demo_v8}
+
+\input{demo_v8r}
+
+%======================================================================
+\section{Limitaciones y trabajo futuro}
+\begin{itemize}[nosep]
+\item Formalizar mecánicamente estas pruebas (Why3 o Dafny para las triplas de Hoare,
+  Coq o Isabelle para los lemas de órdenes y de powersort).
+\item Probar la equivalencia con el código C++, o generar el código desde la
+  especificación verificada.
+\item Las afirmaciones de rendimiento contra blitsort son experimentales: una sola
+  máquina, ruido de $\pm10\%$ y solo \texttt{uint64}.
+\item Créditos: la triple reversión fusionada sigue la \emph{trinity rotation} de
+  blitsort; el \emph{parity merge} de igual largo y el \emph{cross merge} vienen de
+  quadsort y blitsort (scandum, dominio público); el criterio de powersort es de
+  Munro y Wild, con la formulación del \texttt{powerloop} de CPython. No se hizo una
+  revisión de literatura exhaustiva.
+\end{itemize}
+
+\end{document}
