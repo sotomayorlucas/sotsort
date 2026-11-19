@@ -213,20 +213,81 @@ comparaciones del sondeo). El harness verifica el resultado en cada corrida.
 Tiempo (indicativo, una máquina): int 1.05, ptr 0.84, fastarr 0.96, arr 0.61 respecto de
 VM-Powersort.
 
+## 2f. Demostración para k grupos
+
+Notación: rango a[0, m), k grupos, páginas de P, k páginas de salida en el buffer, w =
+páginas volcadas, f_g = ocupación de la página de salida del grupo g, grupo(x) = cantidad
+de separadores ≤ x (los iguales caen en el mismo grupo).
+
+**Lema 1' (siempre hay ranura).** Al volcar con w = f se leyeron q = fP + Σ_g f_g elementos
+y algún f_g vale P, así que q ≥ (f+1)P. La ranura f está leída por completo y no contiene
+páginas volcadas: escribir ahí no destruye nada.
+
+**Lema 2' (orden).** Se vuelca siempre en la ranura w y w crece de a uno: el índice de
+ranura es el orden de volcado. Cada página de salida recibe sus elementos en orden de
+lectura. Entonces la secuencia estable del grupo g es: sus páginas por índice de ranura
+creciente y luego su parcial. Basta anotar el grupo de cada ranura (⌈log2 k⌉ bits).
+
+**Lema 3' (espacio final).** m = wP + Σ_g f_g, así que [wP, m) mide la suma de las
+parciales, todo leído y sin volcar.
+
+**Fases.** (1) Parciales a [wP, m) en orden de grupo. (2) Permutación de ranuras: destino
+de una ranura del grupo g = F_g + (ranuras del grupo g con índice menor), con F_g = páginas
+llenas de los grupos < g; es una biyección y conserva el orden dentro de cada grupo; por
+ciclos con una página de buffer. (3) Parciales al buffer; de g = k−1 a 0, la parcial del
+grupo g va a F_{g+1}P + D_g y sus páginas se corren D_g lugares, con D_g = Σ_{h<g} f_h.
+Como D_g ≤ D_{g+1}, mover de derecha a izquierda no pisa nada sin mover.
+Resultado: grupo g en [F_gP + D_g, F_{g+1}P + D_{g+1}), estable. ∎
+
+**Costo exacto por pasada.** Comparaciones: Σ_x (pasos de la búsqueda binaria) ≤ m·⌈log2 k⌉.
+Movimientos: m (clasificar) + wP (volcar) + Σf (fase 1) + (M + C)P (fase 2) + Σf (copiar
+parciales) + Σ_{g≥1} (F_{g+1}−F_g)P (corrimiento, solo grupos con D_g > 0) + Σf
+≤ 4m + 3kP, con M ≤ w páginas fuera de lugar y C ≤ M/2 ciclos (≤ 4.5m en el peor caso de
+la fase 2). Memoria: kP elementos + w·(2 + 4) bytes de tablas en la implementación actual.
+
+**Verificación.** Exhaustiva de la distribución: todas las entradas con claves en {0..k−1},
+k = 2..4, P = 1..3, m ≤ 9 (1 140 207 casos), comparando posiciones y comienzos de grupo con
+`std::stable_sort`. Sort completo: 81 casos (aleatoria, todos iguales, 2 y 64 claves,
+sierra, casi todos iguales, permutación, descendente con iguales, un valor muy repetido;
+n hasta 3·10^5; presupuestos de 20 KB a 1 MB), con ASan y UBSan
+(`bench/cost/paged_samplesort_test.cpp`). Tope de pasadas: 2·log_k n + 2; después cae al
+quicksort de SotSort, que tiene su propio respaldo. No probé adversarios contra la muestra.
+
 ## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
 
-- IPS4o y su versión de revista ("Engineering In-place (Shared-memory) Sorting Algorithms",
-  TOPC 2022): clasificación en bloques de buffer, volcado en bloques ya leídos y permutación
-  de bloques. **No preserva el orden de los bloques dentro de un bucket**, así que no es
-  estable; la revista no describe una variante estable de la permutación de bloques.
-- Katajainen y Pasanen (BIT 1992): partición estable en O(n) tiempo y O(1) espacio.
-  Resultado teórico; constantes grandes, no orientado a movimientos con buffer.
-- glidesort y el quicksort estable de la biblioteca estándar de Rust: partición estable a
-  un scratch de tamaño proporcional a n (n/8 o más); no paginan.
-- VM-Powersort: páginas para **mezclas**, no para particiones.
-- No encontré una partición estable paginada con un bit por página. Eso **no** prueba que
-  sea nueva: falta buscar en literatura de external memory / stable distribution sort y
-  preguntar.
+**Antecedente directo: Radsort** (Clausecker y Schintke, "Parallel O(√n) Overhead LSD Radix
+Sort", arXiv:2607.05302, 2026). Ordena estable por radix LSD con bloques: cada elemento va
+al bloque de salida de su bucket; un bloque lleno ocupa el siguiente bloque lógico ya
+consumido de la entrada (su Lema 1 es nuestro Lema 1'); un arreglo U anota el bucket de
+cada bloque de salida y una permutación π dice dónde vive cada bloque lógico; entre rondas
+no se mueven datos, solo índices, y al final se ubican los bloques. Memoria O(b + n/b).
+**El mecanismo central de nuestra pasada (reusar bloques consumidos y anotar el grupo de
+cada bloque para conservar la estabilidad) ya está ahí.** Sus autores dejan el MSD como
+trabajo futuro porque los bloques parciales recursivos les costaban demasiada memoria.
+
+Lo que nuestra versión hace distinto (contribución posible, a validar):
+- comparaciones con separadores muestreados (samplesort), no radix: sirve para cualquier
+  tipo con un orden;
+- MSD recursivo: cada pasada deja los grupos físicamente contiguos (permutación por ciclos
+  + corrimiento de parciales, ~1.5 movimientos extra por elemento) y la recursión trabaja
+  sobre rangos reales; eso resuelve el problema de las parciales que Radsort menciona;
+- integrado como camino de entrada casi aleatoria de un sort adaptativo con presupuesto fijo
+  de memoria, con conteos contra VM-Powersort.
+
+Otros:
+- IPS4o / IPS2Ra (Axtmann, Witt, Ferizovic, Sanders): distribución por bloques con buffers y
+  permutación de bloques; no preserva el orden de los bloques dentro de un bucket, no es
+  estable.
+- Polychroniou y Ross: particionado en memoria con listas de bloques; Radsort lo cita como lo
+  más parecido. No lo leí.
+- Katajainen y Pasanen (1992): partición estable en O(n) y O(1) espacio; teórico.
+- Xu y Chick, "Near-Optimal In-Place Sorting" (arXiv:2607.27040): buffer, segmentos y vector
+  de bits; inestable.
+- VM-Powersort: páginas para mezclas.
+
+Conclusión honesta: la idea no es nueva en su núcleo. Lo presentable es la combinación
+(samplesort por comparaciones, MSD con grupos contiguos, dentro de un sort adaptativo con
+memoria acotada) y las mediciones, citando Radsort como origen del mecanismo.
 
 ## 4. Próximos pasos
 

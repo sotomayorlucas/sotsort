@@ -15,7 +15,7 @@
 namespace pss {
 
 template <class T, class Lt>
-struct Ctx { T* buf; std::size_t B, K; Lt lt; std::mt19937_64 rng{1}; };
+struct Ctx { T* buf; std::size_t B, K; Lt lt; std::mt19937_64 rng{1}; int max_depth = 64; };
 
 template <class T, class Lt>
 std::size_t ways(const Ctx<T, Lt>& c) {
@@ -81,9 +81,11 @@ void distribute(T* a, std::size_t m, const T* spl, std::size_t k, Ctx<T, Lt>& c,
 }
 
 template <class T, class Lt>
-void psort(T* a, std::size_t m, Ctx<T, Lt>& c, T* spl, T* smp, std::uint16_t* grp, std::uint32_t* src) {
+void psort(T* a, std::size_t m, Ctx<T, Lt>& c, T* spl, T* smp, std::uint16_t* grp, std::uint32_t* src, int depth = 0) {
     const std::size_t k = ways(c);
-    if (m <= c.B || k < 2) { base(a, m, c); return; }
+    // Presupuesto de pasadas: con muestras malas (o armadas) se cae al quicksort de SotSort,
+    // que tiene su propio respaldo O(n log n). 2·log_k(n) + 2 pasadas como máximo.
+    if (m <= c.B || k < 2 || depth > c.max_depth) { base(a, m, c); return; }
     const std::size_t ns = std::min<std::size_t>(m, 8 * k);
     for (std::size_t i = 0; i < ns; ++i) smp[i] = a[c.rng() % m];
     std::sort(smp, smp + ns, c.lt);
@@ -93,7 +95,7 @@ void psort(T* a, std::size_t m, Ctx<T, Lt>& c, T* spl, T* smp, std::uint16_t* gr
     for (std::size_t j = 0; j < k; ++j) {
         std::size_t len = start[j + 1] - start[j];
         if (len == m) { base(a, m, c); return; }      // sin progreso (muchos iguales)
-        if (len > 1) psort(a + start[j], len, c, spl, smp, grp, src);
+        if (len > 1) psort(a + start[j], len, c, spl, smp, grp, src, depth + 1);
     }
 }
 
@@ -131,6 +133,8 @@ void sort(T* a, std::size_t n, std::size_t bytes, std::size_t K = 64, Lt lt = Lt
     std::unique_ptr<std::uint16_t[]> grp(new std::uint16_t[slots]);
     std::unique_ptr<std::uint32_t[]> src(new std::uint32_t[slots]);
     c.buf = buf.get();
+    { int lk = 0; for (std::size_t x = k; x > 1; x >>= 1) ++lk; int ln = 0; for (std::size_t x = n; x > 1; x >>= 1) ++ln;
+      c.max_depth = 2 * (ln + lk - 1) / lk + 2; }
     psort(a, n, c, spl.get(), smp.get(), grp.get(), src.get());
 }
 
