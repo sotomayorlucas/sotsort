@@ -271,3 +271,7 @@ Per-element counts divided by 0.95·10^7.
 | 10^6 | 1.07 | 1.01 | 3.98 / 3.98 | 5.96 / 5.96 |
 
 At 10^6 and 10^5 operation counts are equal or lower for SotSort while time is 4–7% higher; the cause is not identified (single machine, no hardware counters). copy/almost here ranges 0.95–1.05.
+
+**Second machine at n = 10^7** (`results-pc-1e7-r5/`, `cells_1e7_pc.sh`, time only, 10 iterations, same binary as `results-pc-fin`):
+`sotvm / almost` = 1.09, 0.95, 0.93, 0.93, 0.95, 0.99 for S = 2 … 10^6; `sothalf / copy` = 1.06–1.09; `copy / almost` = 0.98–1.01.
+The 4–7% loss at S = 10^5 and 10^6 on the cloud VM does not appear here.

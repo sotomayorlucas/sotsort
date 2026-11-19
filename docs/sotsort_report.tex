@@ -29,12 +29,11 @@ slower on near-random input with expensive moves or comparisons. All numbers are
 \end{abstract}
 
 \section{Scope and status}
-This report describes and measures one artifact, \texttt{include/sotsort.hpp}: version 8-r
-for Sections~\ref{sec:tests} and~\ref{sec:exp}, and version 8-r5 for the comparison with
-Virtual-Memory Powersort (Section~\ref{sec:vmps}), which led to the changes from 8-r to 8-r5.
-The constant-memory mode compared with blitsort differs between the two only in how the routing
-estimates turn density; I have not re-measured Section~\ref{sec:exp} with 8-r5. Both commits
-are given in Section~\ref{sec:avail}. The proofs (Hoare-style, in Spanish) cover
+This report describes and measures one artifact, \texttt{include/sotsort.hpp}, at version
+8-r5; the changes since version 8-r came from the comparison with Virtual-Memory Powersort
+(Section~\ref{sec:vmps}). Two measurements in Section~\ref{sec:exp} (routing heuristics and
+adversaries) are from version 8-r and were not repeated. Both commits are given in
+Section~\ref{sec:avail}. The proofs (Hoare-style, in Spanish) cover
 the algorithms as specified; they are not machine-checked, and the correspondence between the
 proofs and this C++ file rests on differential testing (Section~\ref{sec:tests}). I have not
 surveyed the literature in depth, so some ideas presented as mine may have prior art.
@@ -112,7 +111,9 @@ throws, elements can be lost.
 with \texttt{-O3 -march=native}; Rust 1.97 for glidesort 0.1.2 and the standard library sorts
 (\texttt{sort}: driftsort; \texttt{sort\_unstable}: ipnsort). $n=10^6$, median of 5 runs after a
 warm-up, pinned to one core. Every output was checked for order, multiset and stability.
-Identical runs differed by up to $\pm15\%$ on this machine. The inputs: uniform random; 16 and
+Identical runs differed by up to $\pm15\%$ on this machine. The tables and the timings in
+the first paragraph below are for version 8-r5; the paragraphs on routing heuristics and
+adversaries were measured with version 8-r and not repeated. The inputs: uniform random; 16 and
 $\sqrt n$ distinct values; Zipf ($s=1.1$); sorted; reversed; sorted with 1\% random
 replacements; sorted with a 10\% random tail; organ pipe; sorted runs of length $\sqrt n$ and
 of length 63 with random keys.
@@ -123,17 +124,17 @@ of length 63 with random keys.
  & \multicolumn{3}{c}{SotSort / blitsort} & SotSort / best of\\
 Input & u32 & u64 & key+index & Grail, Wiki (32\,B)\\
 \midrule
-random & 0.63 & 0.72 & 1.14 & 0.60\\
-16 values & 0.46 & 0.62 & 0.80 & 0.41\\
-$\sqrt n$ values & 0.19 & 0.49 & 0.86 & 0.48\\
-Zipf & 0.44 & 0.50 & 0.64 & 0.50\\
-sorted & 1.09 & 1.00 & 2.57 & 0.77\\
-reversed & 0.94 & 1.01 & 1.81 & 0.12\\
-1\% noise & 1.08 & 1.06 & 1.08 & 0.63\\
-10\% random tail & 0.67 & 0.75 & 1.50 & 0.82\\
-organ pipe & 0.58 & 0.70 & 1.13 & 0.69\\
-runs of $\sqrt n$ & 0.53 & 0.75 & 1.23 & 1.30\\
-runs of 63 & 0.42 & 0.48 & 0.78 & 0.75\\
+random & 0.82 & 0.71 & 1.04 & 0.56\\
+16 values & 0.47 & 0.75 & 0.87 & 0.38\\
+$\sqrt n$ values & 0.32 & 0.57 & 0.59 & 0.50\\
+Zipf & 0.45 & 0.66 & 0.87 & 0.48\\
+sorted & 0.99 & 1.07 & 2.31 & 0.52\\
+reversed & 0.92 & 1.01 & 1.62 & 0.12\\
+1\% noise & 1.04 & 0.63 & 0.84 & 0.50\\
+10\% random tail & 0.65 & 0.72 & 0.85 & 0.75\\
+organ pipe & 0.55 & 0.65 & 0.78 & 0.36\\
+runs of $\sqrt n$ & 0.58 & 0.54 & 1.13 & 0.90\\
+runs of 63 & 0.36 & 0.58 & 0.70 & 0.65\\
 \bottomrule
 \end{tabular}
 \caption{Constant-memory sorts, $n=10^6$: time ratio, below 1 means SotSort is faster.
@@ -146,15 +147,15 @@ not support 32-byte records.}\label{tab:o1}
 \toprule
 Input (u64) & SotSort O(1) & SotSort fast & blitsort & fluxsort & glidesort & driftsort\\
 \midrule
-random & 23.5 & 21.0 & 32.6 & 27.4 & 30.3 & 26.6\\
-Zipf & 13.7 & 13.6 & 27.5 & 16.3 & 28.3 & 13.4\\
-sorted & 0.3 & 0.3 & 0.3 & 0.3 & 0.6 & 0.4\\
-reversed & 0.6 & 0.6 & 0.6 & 0.7 & 0.9 & 0.8\\
-1\% noise & 10.8 & 12.1 & 10.2 & 24.2 & 30.5 & 20.1\\
-10\% random tail & 5.6 & 7.6 & 7.4 & 6.9 & 5.1 & 6.6\\
-organ pipe & 2.8 & 3.6 & 4.0 & 3.2 & 1.9 & 4.9\\
-runs of $\sqrt n$ & 25.4 & 22.3 & 33.7 & 26.8 & 12.9 & 44.0\\
-runs of 63 & 23.6 & 21.8 & 49.4 & 29.4 & 30.8 & 28.0\\
+random & 18.5 & 16.0 & 26.2 & 22.5 & 26.5 & 23.6\\
+Zipf & 11.1 & 8.3 & 16.9 & 10.8 & 13.8 & 15.6\\
+sorted & 0.3 & 0.4 & 0.3 & 0.3 & 0.6 & 0.5\\
+reversed & 0.6 & 0.7 & 0.6 & 0.6 & 0.9 & 0.8\\
+1\% noise & 8.7 & 9.9 & 13.8 & 18.8 & 26.3 & 16.8\\
+10\% random tail & 4.8 & 6.5 & 6.6 & 6.4 & 4.4 & 5.8\\
+organ pipe & 2.4 & 3.3 & 3.8 & 2.6 & 1.6 & 4.0\\
+runs of $\sqrt n$ & 16.9 & 23.6 & 31.2 & 21.5 & 12.2 & 39.9\\
+runs of 63 & 24.2 & 17.4 & 41.4 & 23.8 & 26.9 & 20.3\\
 \bottomrule
 \end{tabular}
 \caption{Milliseconds, $n=10^6$ 64-bit integers, one thread. ``fast'' uses a full buffer. The
@@ -164,14 +165,17 @@ counting sort.}\label{tab:abs}
 
 \paragraph{Reading.} With 32- and 64-bit integers the constant-memory mode is ahead of
 blitsort or level with it on every input class measured; the closest are sorted,
-reversed and nearly sorted input (0.94 to 1.09). With a comparator that the vector
-partition cannot use (``key+index'') it loses on 7 of 11 classes, worst on sorted input
-(2.57), where blitsort's scan is faster. Against the linear-memory sorts, the fast mode
+reversed and nearly sorted input (0.92 to 1.07). With a comparator that the vector
+partition cannot use (``key+index'') it loses on 4 of 11 classes, worst on sorted input
+(2.31), where blitsort's scan is faster. Against the linear-memory sorts, the fast mode
 is ahead on random input and behind glidesort on organ pipe, the random tail and runs of
-$\sqrt n$ (1.5 to 1.9 times for 64-bit integers). For $n=10^7$ random 64-bit integers
-the fast mode took 280\,ms, glidesort 362, the constant-memory mode 364, fluxsort 375,
-driftsort 392 and blitsort 463. Extra memory at $n=10^7$ (80\,MB of data), as peak
-resident set growth: under 0.5\,MB in constant-memory mode and about 40\,MB in fast mode.
+$\sqrt n$ (1.5 to 2.1 times for 64-bit integers). For $n=10^7$ random 64-bit integers
+(median of 3) the fast mode took 200\,ms, the constant-memory mode 287, glidesort 294,
+fluxsort 311, driftsort 332 and blitsort 462. Extra memory at $n=10^7$ (80\,MB of data), as
+peak resident set growth: under 0.5\,MB in constant-memory mode and about 37\,MB in fast mode.
+Absolute times are lower than in revision 4 of this report in most cells, including for the
+unchanged competitors (blitsort, random \texttt{u64}, $n=10^6$: 32.6 then 26.2\,ms), so the
+shared VM was faster on this day; compare within a table, not across revisions.
 
 \paragraph{Effect of the routing heuristics.} Against the same code without them
 (interleaved runs, minimum of 7): 0.45 to 0.81 of the time on sorted data with a random
@@ -179,8 +183,8 @@ zone, 0.26 to 0.88 on sorted runs of random keys, no change on random and
 duplicate-heavy input, and at most 10\% worse elsewhere, which is within noise. Buffer
 sizes from 4 to 128\,KB and leaf sizes from 32 to 256 made no measurable difference.
 
-\paragraph{Comparisons.} On random input every sort measured makes between 1.07 and 1.29 times
-$\lg n!$ comparisons; SotSort makes 1.11. This is not a differentiator.
+\paragraph{Comparisons.} On random input every sort measured makes between 1.09 and 1.22 times
+$\lg n!$ comparisons; SotSort makes 1.10. This is not a differentiator.
 
 \paragraph{Adversaries.} McIlroy's adversary, which fixes values lazily, loses to any sort with
 a run-detection pass, so a random fraction ($10^{-3}$ to $10^{-1}$) of positions was frozen in
@@ -230,14 +234,15 @@ comparisons; it was found because operation counts were identical while times we
 \begin{table}[t]\centering\small
 \begin{tabular}{@{}lrrrrrr@{}}\toprule
 $S$ & 2 & 100 & 1000 & $10^4$ & $10^5$ & $10^6$\\\midrule
-time, SotSort / VM-Powersort & 1.09 & 0.97 & 0.96 & 0.97 & 1.04 & 1.07\\
+time, SotSort / VM-Powersort, cloud & 1.09 & 0.97 & 0.96 & 0.97 & 1.04 & 1.07\\
+time, SotSort / VM-Powersort, PC & 1.09 & 0.95 & 0.93 & 0.93 & 0.95 & 0.99\\
 comparisons per element, VM-Powersort & 26.80 & 17.26 & 13.58 & 10.52 & 7.24 & 3.98\\
 comparisons per element, SotSort & 22.30 & 16.93 & 13.58 & 10.52 & 7.24 & 3.98\\
 moves per element, VM-Powersort & 30.71 & 19.37 & 15.55 & 12.50 & 9.22 & 5.96\\
 moves per element, SotSort & 49.58 & 18.69 & 15.31 & 12.27 & 8.99 & 5.96\\\bottomrule
 \end{tabular}
 \caption{Version 8-r5, \texttt{int}, same memory, $n$ uniform in $[0.9\cdot10^7, 10^7]$
-(per-element counts divided by $0.95\cdot10^7$), cloud VM, 10 runs for time and 3 for counts.
+(per-element counts divided by $0.95\cdot10^7$), 10 runs for time on each machine, 3 for counts (counts are the same on both).
 ``Moves'' counts assignments and copy/move constructions.}\label{tab:vm7}
 \end{table}
 
@@ -260,21 +265,29 @@ on an Intel Core Ultra 7 155H, gcc 11.4. Same source on both.}\label{tab:vm6}
 
 \paragraph{Results.} At $n\approx10^6$ (Table~\ref{tab:vm6}) the ratio is below 1.00 in 43 of
 48 cells, down to 0.52 for slow moves with long runs. At $n=10^7$ on integers
-(Table~\ref{tab:vm7}) the two are within 4\% for $S$ from 100 to $10^5$, and SotSort is 7--9\%
-slower at the extremes. The weak spot is near-random input ($S=2$): SotSort's quicksort makes
+(Table~\ref{tab:vm7}) SotSort is 1--7\% faster on the PC for $S\ge100$; on the cloud VM it is
+3--4\% faster for $S$ from 100 to $10^4$ and 4--7\% slower for $S=10^5$ and $10^6$, where its
+operation counts are equal or lower. Since that loss does not appear on the second machine I
+read it as a property of that VM rather than of the algorithm, without being able to show why
+(no hardware counters). On both machines SotSort is 9\% slower at $S=2$. The weak spot is near-random input ($S=2$): SotSort's quicksort makes
 17--32\% fewer comparisons but many more moves (49.58 against 30.71 per element at $n=10^7$,
 since with this budget its partition blocks are small), so it loses when moves or comparisons
 are not both cheap: \texttt{ptr} 1.05 and 1.17, cloud \texttt{fastarr} 1.10. With $n/2$
 memory against CPython-style Powersort SotSort is still 1--11\% slower on \texttt{int} at
-$n=10^7$ and up to 1.56 times slower on \texttt{ptr} at $n=10^6$; that comparison was not the
+$n=10^7$ on the cloud VM (6--9\% on the PC) and up to 1.56 times slower on \texttt{ptr} at $n=10^6$; that comparison was not the
 target of these changes. Repeated runs of identical code moved ratios by up to about 10\%, so
 smaller differences are ties.
 
-\paragraph{Reproduction.} Our absolute times for Virtual-Memory Powersort are close to those
-the authors publish for an i7-4770 (e.g.\ 0.129\,s against 0.128\,s for \texttt{int},
-$S=10^6$, $n=10^7$), but their data show copy-Powersort 10--25\% faster than Virtual-Memory
-Powersort, while here the two are within about 5\% (Table~\ref{tab:vm7} setup). Their algorithms' relative costs are therefore
-not reproduced on our machines.
+\paragraph{An observation about the baselines.} My absolute times for Virtual-Memory
+Powersort are close to those the authors report for an i7-4770 in the data published with the
+code (\texttt{int}, $n=10^7$: 0.128\,s there and 0.128 to 0.129\,s on the cloud VM here for
+$S=10^6$; 0.82 and 0.93\,s for $S=2$). In those data copy-Powersort is about 10--25\% faster
+than Virtual-Memory Powersort; on my two machines, at $n=10^7$,
+the two are within about 5\%. I have not found the cause. Candidates are the processor
+(their i7-4770 against a recent Xeon and a Core Ultra 7, both behind a hypervisor), the
+compiler version, and differences between their published runs and the \texttt{assignment-fix}
+branch I used. This matters for reading Table~\ref{tab:vm6}: the comparison here is against
+Virtual-Memory Powersort as it runs on these machines.
 
 \section{Limitations}
 For Section~\ref{sec:exp}, one machine, virtualised and shared, with two cores (Section~\ref{sec:vmps}
