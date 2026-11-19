@@ -57,25 +57,71 @@ buffer chico es casi siempre en los niveles altos.
 Lo que ya se puede afirmar: con buffer chico, el quicksort pasaría de
 Θ(n log n log(n/B)) a Θ(n log n) movimientos esperados. Es una cota, no un tiempo.
 
-## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
+## 2b. Prototipo y demostración (19 nov 2026, tarde)
 
-- IPS4o y su versión de revista ("Engineering In-place (Shared-memory) Sorting Algorithms",
-  TOPC 2022): clasificación en bloques de buffer, volcado en bloques ya leídos y permutación
-  de bloques. **No preserva el orden de los bloques dentro de un bucket**, así que no es
-  estable; la revista no describe una variante estable de la permutación de bloques.
-- Katajainen y Pasanen (BIT 1992): partición estable en O(n) tiempo y O(1) espacio.
-  Resultado teórico; constantes grandes, no orientado a movimientos con buffer.
-- glidesort y el quicksort estable de la biblioteca estándar de Rust: partición estable a
-  un scratch de tamaño proporcional a n (n/8 o más); no paginan.
-- VM-Powersort: páginas para **mezclas**, no para particiones.
-- No encontré una partición estable paginada con un bit por página. Eso **no** prueba que
-  sea nueva: falta buscar en literatura de external memory / stable distribution sort y
-  preguntar.
+Prototipo: `bench/cost/paged_partition.cpp`. Algoritmo exacto (páginas de P, buffer 2P):
+
+- **Lectura.** Para r = 0..m−1: el elemento va al final de LB o de RB (1 movimiento). Si una
+  página de salida se llena, se copia a la ranura w = [wP, (w+1)P) (P movimientos), se
+  anota el lado en el bit w y w ← w+1.
+- **Fase 1.** LB (nl elementos) y RB (nr) se copian a [wP, m).
+- **Fase 2.** Permutación por ciclos de las w páginas: destino de una izquierda = cantidad de
+  izquierdas antes; de una derecha = (total de izquierdas) + derechas antes. Se sigue cada
+  ciclo hacia atrás con un hueco: una página al buffer y luego cada página una sola vez.
+  El origen de cada ranura se obtiene con *select* sobre el bitset (prefijos por palabra).
+- **Fase 3.** [L·P | R·P | nl | nr] → [L | nl | R | nr]: la parcial izquierda se pasa por el
+  buffer y las páginas derechas se corren nl lugares. La parcial derecha ya está en su lugar.
+
+**Lema 1 (siempre hay ranura).** Al volcar con w = f, se leyeron q = fP + nl + nr elementos y
+uno de los dos vale P, así que q ≥ (f+1)P. Las posiciones [0, q) ya se leyeron; las ranuras
+< f tienen páginas volcadas y la ranura f no tiene elementos sin leer ni páginas volcadas.
+Escribir ahí no destruye nada.
+
+**Lema 2 (orden).** Se vuelca siempre en la ranura w y w crece de a uno, así que el índice
+de ranura es el orden de volcado. Cada página de salida recibe sus elementos en orden de
+lectura. Por lo tanto, los izquierdos en orden estable son: páginas izquierdas por índice de
+ranura creciente y luego LB; igual del lado derecho. Un bit por ranura alcanza.
+
+**Lema 3 (espacio final).** Al terminar, m = wP + nl + nr, así que [wP, m) mide exactamente
+nl + nr, todo leído y sin volcar.
+
+Con los tres, la fase 2 es una permutación de ranuras (biyección) y el resultado de la fase 3
+es [izquierdos en orden | derechos en orden]: la partición es estable.
+
+**Costo exacto.** Comparaciones: m (un predicado por elemento). Movimientos:
+2m + (M + C)·P + b·P + 2·nl, donde M = páginas fuera de lugar en la fase 2, C = ciclos de
+largo ≥ 2 y b = páginas derechas. Como C ≤ M/2, M ≤ w y b ≤ w: **a lo sumo 4.5m + O(P)**,
+para cualquier B. Memoria extra: 2P elementos, 2w bits y ⌈w/64⌉ palabras de prefijos.
+
+**Verificación.** Exhaustiva para todas las entradas 0/1 con m ≤ 16 y P = 1..4 (524 280
+casos, contra `std::stable_partition`); aleatoria para m hasta 4.2·10^6, incluido m no
+múltiplo de P. Movimientos por elemento, pivote = mediana, B = 2P:
+
+| m | B | m/B | actual | paginada |
+|---|---|---|---|---|
+| 2^16 | 2048 | 32 | 4.69 | 3.59 |
+| 2^20 | 2048 | 512 | 6.71 | 3.50 |
+| 2^22 | 2048 | 2048 | 7.70 | 3.51 |
+| 3000017 | 2048 | 1465 | 8.03 | 3.50 |
+| 2^20 | 65536 | 16 | 4.19 | 3.62 |
+| 2^16 | 8192 | 8 | 3.74 | 3.62 |
+
+La actual crece con lg(m/B); la paginada queda en ≈ 3.5 con mitades iguales.
+
+**Limitaciones honestas.**
+- La memoria de los bits es O(m/P): con P = 1024 y m = 10^9 son ~125 KB, más que el buffer
+  fijo de 16 KB. El modo de memoria constante necesitaría P creciente o guardar los bits en
+  el propio buffer (16 KB alcanzan para ~1.3·10^8 elementos con P = 1024).
+- Con m/B ≤ 8 la actual ya es igual o más barata: hay que elegir entre las dos según m/B.
+- 3.5 no es óptimo: la fase 2 mueve casi todas las páginas. Leer desde los dos extremos
+  podría evitar parte de eso; no está analizado.
+- Todavía no está integrada al quicksort ni medida en el harness de VM-Powersort.
 
 ## 4. Próximos pasos
 
-1. Escribir la demostración de la afirmación 3 (invariante de ranuras libres).
-2. Prototipo aislado de la partición paginada, con el mismo tipo contador, y comparar la
-   curva de movimientos con la tabla de la sección 1.
-3. Derivar la constante c de la partición actual.
-4. Solo después: integrar al quicksort y medir conteos en el harness de VM-Powersort.
+1. ~~Demostración del invariante~~ y ~~prototipo~~ (sección 2b).
+2. Derivar la constante c de la partición actual.
+3. Elegir entre las dos particiones según m/B; resolver dónde viven los bits en modo O(1).
+4. Integrar al quicksort y medir conteos (no tiempos) en el harness de VM-Powersort.
+5. Seguir buscando antecedentes (memoria externa, distribution sort estable) antes de
+   presentar la idea como propia.
