@@ -440,6 +440,7 @@ private:
     }
     // Regla de ruta común: g giros (contados o estimados) en n elementos.
     bool route_by_turns(std::size_t n, std::size_t g) {
+        est_runs_ = g / 2 + 1;
         if (g * 8 >= n) return false;
         if (!TRIV) return true;                        // tipos no triviales: la regla de ruta midió peor (strings)
         if (sample_ordered(n)) return true;            // orden global: mezclas con rachas largas
@@ -540,6 +541,7 @@ private:
     std::vector<std::uint32_t> pg_, pgw_, pgf_;
     bool page_ok(std::size_t n) const {
         const std::size_t P = B_ / PG_K;
+        if (buf_ == own_) return false;                      // modo O(1): sin memoria en el heap
         if (P < 64 || n / P + PG_K + 2 >= (std::size_t(1) << 31)) return false;
         return (n / P + PG_K + 2) * sizeof(std::uint32_t) * 8 <= B_ * sizeof(T);
     }
@@ -935,7 +937,198 @@ private:
         }
         return r;
     }
+    // ------------------------------------------------- runs paginados (v8-r5)
+    // Esquema de Virtual-Memory Powersort (Moltmann, Nakajima, Wild, ESA 2026) dentro del camino
+    // de runs naturales de SotSort, cuando el buffer es chico (B < n/2). Cada run, apenas se
+    // detecta, se copia a páginas de P elementos; un run es una lista de páginas (solo la última
+    // parcial). Las mezclas van de página a página, liberando páginas de entrada y tomando
+    // páginas libres para la salida, sin permutar. Al final la lista única se vuelve al arreglo.
+    // Páginas físicas: las páginas completas del arreglo (que se liberan a medida que los runs
+    // se copian) y K = ⌈lg n⌉ + 8 páginas del buffer. Movimientos: 1 (copia inicial) + 1 por
+    // nivel de mezcla + a lo sumo 1 (vuelta al arreglo; las páginas que ya están en su lugar
+    // no se mueven).
+    // Lugar: en uso hay a lo sumo Σ⌈len/P⌉ ≤ n/P + runs páginas más 3 transitorias de la mezcla;
+    // hay ⌊n/P⌋ del arreglo más K del buffer, y la pila de powersort tiene a lo sumo ⌈lg n⌉ + 2 runs.
+    bool paging_ = false;
+    std::size_t est_runs_ = ~std::size_t(0);   // runs estimados por la sonda de giros (sin sonda: muchos)
+    std::vector<std::uint32_t> pr_stk_, pr_tmp_, pr_pos_, pr_fr_, pr_cur_;
+    std::size_t paged_K(std::size_t n) const { std::size_t k = 0; while ((std::size_t(1) << k) < n) ++k; return k + 8; }
+    std::size_t paged_P(std::size_t n) const {
+        std::size_t q = B_ / paged_K(n), p = 1;
+        while (p * 2 <= q) p *= 2;
+        return p;
+    }
+    bool paged_ok(std::size_t n) const {
+        // Con pocos runs, copiar a páginas y volver cuesta más que mezclar directo (mezcla por
+        // páginas de v8-r4): el camino paginado se usa con 16 runs estimados o más.
+        // Solo con un buffer reservado aparte: en modo O(1) (buffer propio) la tabla de páginas
+        // rompería la cota de memoria y las zonas usan el buffer propio como lugar de trabajo.
+        if (buf_ == own_ || n < 4096 || B_ * 2 >= n || est_runs_ < 16) return false;
+        const std::size_t P = paged_P(n);
+        if (P < 64) return false;
+        const std::size_t pages = n / P + paged_K(n) + 2;
+        if (pages >= (std::size_t(1) << 31)) return false;
+        return pages * sizeof(std::uint32_t) * 5 <= B_ * sizeof(T) / 8 + 4096;
+    }
+    void paged_natural_merge_sort(std::size_t lo, std::size_t hi, std::size_t known) {
+        const std::size_t n = hi - lo, K = paged_K(n), P = paged_P(n), NA = n / P;
+        T* const A = a_ + lo;
+        auto base = [&](std::uint32_t ph) -> T* { return ph < NA ? A + std::size_t(ph) * P : buf_ + std::size_t(ph - NA) * P; };
+        auto npg = [&](std::size_t len) { return (len + P - 1) / P; };
+        pr_fr_.clear(); pr_stk_.clear();
+        for (std::size_t k = K; k-- > 0;) pr_fr_.push_back(static_cast<std::uint32_t>(NA + k));
+        auto pop = [&]() { std::uint32_t ph = pr_fr_.back(); pr_fr_.pop_back(); return ph; };
+        struct Run { std::size_t s, len, off; int power; } st[STACK];
+        int top = 0;
+        std::size_t af = 0;                                     // próxima página del arreglo a liberar
+        paging_ = true;
+        auto merge_top = [&]() {
+            Run& X = st[top - 2]; Run& Y = st[top - 1];
+            const std::size_t lx = X.len, ly = Y.len, px = npg(lx), py = npg(ly);
+            std::uint32_t* xs = pr_stk_.data() + X.off;
+            std::uint32_t* ys = pr_stk_.data() + Y.off;
+            if (lx + ly <= P && px == 1 && py == 1) {           // cabe en una página: mezcla hacia atrás en la de Y
+                T *xa = base(xs[0]), *xb = xa + lx, *ya = base(ys[0]), *yb = ya + ly, *o = ya + lx + ly;
+                while (xb != xa && yb != ya) { if (lt(*(yb - 1), *(xb - 1))) *--o = std::move(*--xb); else *--o = std::move(*--yb); }
+                while (xb != xa) *--o = std::move(*--xb);
+                pr_fr_.push_back(xs[0]);
+                xs[0] = ys[0];
+                X.len += ly; --top; pr_stk_.resize(X.off + 1);
+                return;
+            }
+            pr_tmp_.clear();
+            std::size_t ix = 0, iy = 0, rx = lx, ry = ly;
+            T *x1 = base(xs[0]), *x2 = x1 + std::min(rx, P), *y1 = base(ys[0]), *y2 = y1 + std::min(ry, P);
+            T *o1 = nullptr, *o2 = nullptr;
+            while (rx || ry) {
+                if (o1 == o2) { std::uint32_t ph = pop(); pr_tmp_.push_back(ph); o1 = base(ph); o2 = o1 + P; }
+                std::size_t k = static_cast<std::size_t>(o2 - o1);
+                if (rx && ry) {
+                    k = std::min(k, std::min(static_cast<std::size_t>(x2 - x1), static_cast<std::size_t>(y2 - y1)));
+                    T *xb = x1, *yb = y1;
+                    for (std::size_t t = 0; t < k; ++t) {
+                        if (lt(*y1, *x1)) *o1++ = std::move(*y1++);
+                        else *o1++ = std::move(*x1++);
+                    }
+                    rx -= static_cast<std::size_t>(x1 - xb); ry -= static_cast<std::size_t>(y1 - yb);
+                } else if (rx) {
+                    k = std::min(k, static_cast<std::size_t>(x2 - x1));
+                    o1 = std::move(x1, x1 + k, o1); x1 += k; rx -= k;
+                } else {
+                    k = std::min(k, static_cast<std::size_t>(y2 - y1));
+                    o1 = std::move(y1, y1 + k, o1); y1 += k; ry -= k;
+                }
+                if (x1 == x2 && ix < px) {
+                    pr_fr_.push_back(xs[ix++]);
+                    if (rx) { x1 = base(xs[ix]); x2 = x1 + std::min(rx, P); }
+                }
+                if (y1 == y2 && iy < py) {
+                    pr_fr_.push_back(ys[iy++]);
+                    if (ry) { y1 = base(ys[iy]); y2 = y1 + std::min(ry, P); }
+                }
+            }
+            X.len += ly; --top;
+            pr_stk_.resize(X.off);
+            pr_stk_.insert(pr_stk_.end(), pr_tmp_.begin(), pr_tmp_.end());
+        };
+        std::size_t i = lo;
+        while (i < hi) {
+            std::size_t j = next_run(i, lo, hi, known);
+            // copiar [i, j) a páginas y liberar las páginas completas del arreglo ya copiadas
+            pr_cur_.clear();
+            for (std::size_t t = i; t < j; t += P) {
+                std::size_t e = std::min(t + P, j);
+                std::uint32_t ph = pop();
+                std::move(a_ + t, a_ + e, base(ph));
+                pr_cur_.push_back(ph);
+                while (af < NA && lo + (af + 1) * P <= e) pr_fr_.push_back(static_cast<std::uint32_t>(af++));
+            }
+            int p = 0;
+            if (top > 0) {
+                p = powerloop(st[top - 1].s - lo, st[top - 1].len, j - i, n);
+                while (top > 1 && st[top - 2].power > p) merge_top();
+                st[top - 1].power = p;
+            }
+            st[top++] = {i, j - i, pr_stk_.size(), 0};
+            pr_stk_.insert(pr_stk_.end(), pr_cur_.begin(), pr_cur_.end());
+            i = j;
+        }
+        while (top > 1) merge_top();
+        // Vuelta al arreglo: la página lógica q va a A + q·P (la última, parcial, a la cola).
+        const std::size_t L = npg(n);
+        std::uint32_t* pg = pr_stk_.data() + st[0].off;
+        pr_pos_.assign(NA + K, 0xFFFFFFFFu);                    // física -> lógica
+        for (std::size_t q = 0; q < L; ++q) pr_pos_[pg[q]] = static_cast<std::uint32_t>(q);
+        for (std::size_t q = 0; q < L; ++q) {
+            const std::size_t len = std::min(P, n - q * P);
+            if (q < NA) {
+                if (pg[q] == q) continue;                       // ya está en su lugar
+                std::uint32_t occ = pr_pos_[q];
+                if (occ != 0xFFFFFFFFu) {                       // la ocupa otra lógica (posterior): sacarla
+                    // destino: una página libre del buffer o del arreglo todavía sin destino final (> q)
+                    std::uint32_t f = static_cast<std::uint32_t>(NA + K);
+                    while (f-- > q + 1) if (pr_pos_[f] == 0xFFFFFFFFu) break;
+                    std::move(base(static_cast<std::uint32_t>(q)), base(static_cast<std::uint32_t>(q)) + std::min(P, n - std::size_t(occ) * P), base(f));
+                    pg[occ] = f; pr_pos_[f] = occ;
+                }
+            }
+            std::uint32_t src = pg[q];
+            std::move(base(src), base(src) + len, A + q * P);
+            pr_pos_[src] = 0xFFFFFFFFu;
+            if (q < NA) { pr_pos_[q] = static_cast<std::uint32_t>(q); pg[q] = static_cast<std::uint32_t>(q); }
+        }
+        paging_ = false;
+    }
+
+    // Detecta el run que empieza en i (o usa known), lo deja ordenado en [i, j) y devuelve j.
+    // Descendentes estrictos se invierten; runs cortos se extienden (inserción o zona).
+    std::size_t next_run(std::size_t i, std::size_t lo, std::size_t hi, std::size_t known) {
+        std::size_t j;
+        if (i == lo && known > lo + 1) j = known;
+        else if (i + 1 < hi && lt(a_[i + 1], a_[i])) {
+            j = i + 2;
+            while (j < hi && lt(a_[j], a_[j - 1])) ++j;
+            std::reverse(a_ + i, a_ + j);              // estrictamente descendente: invertir es estable
+        } else {
+            j = i + 1;
+            while (j < hi && !lt(a_[j], a_[j - 1])) ++j;
+        }
+        if (j - i < RUN) {
+#ifndef SOT_NO_ZONES
+            // Zona desordenada (v8-r2): 8 o más runs naturales seguidos de menos de 8
+            // elementos. Se extiende hasta el primer run de 16 o más y se ordena con el
+            // quicksort estable: queda como un solo run.
+            std::size_t e = j, tiny = 1;
+            while (TRIV && e < hi) {            // solo tipos triviales: con strings midió peor
+                std::size_t f = e + 1;
+                const std::size_t cap = std::min(hi, e + 16);   // alcanza con saber si llega a 16
+                if (f < hi && lt(a_[f], a_[e])) { ++f; while (f < cap && lt(a_[f], a_[f - 1])) ++f; }
+                else { while (f < cap && !lt(a_[f], a_[f - 1])) ++f; }
+                if (f - e >= (tiny >= 8 ? 16u : 8u)) break;
+                e = f; ++tiny;
+            }
+            if (tiny >= 8) {
+                int budget = 0;
+                for (std::size_t k = e - i; k; k >>= 1) ++budget;
+                // En el camino paginado el buffer guarda páginas: la zona usa el buffer propio.
+                T* sb = buf_; std::size_t sB = B_;
+                if (paging_) { buf_ = own_; B_ = B0; }
+                adaptive_ = false;
+                quick_from(i, e, budget, false, T{}, nullptr, 0);
+                adaptive_ = true;
+                buf_ = sb; B_ = sB;
+                j = e;
+            } else
+#endif
+            { std::size_t e2 = std::min(hi, i + RUN); insertion(i, e2); j = e2; }
+        }
+        return j;
+    }
+
     void natural_merge_sort(std::size_t lo, std::size_t hi, std::size_t known) {
+#ifndef SOT_NO_PAGED_RUNS
+        if (paged_ok(hi - lo)) { paged_natural_merge_sort(lo, hi, known); return; }
+#endif
         struct Run { std::size_t s, len; int power; } st[STACK];
         int top = 0;
         const std::size_t nn = hi - lo;
@@ -946,41 +1139,7 @@ private:
             X.len += Y.len; --top;
         };
         while (i < hi) {
-            std::size_t j;
-            if (i == lo && known > lo + 1) j = known;
-            else if (i + 1 < hi && lt(a_[i + 1], a_[i])) {
-                j = i + 2;
-                while (j < hi && lt(a_[j], a_[j - 1])) ++j;
-                std::reverse(a_ + i, a_ + j);              // estrictamente descendente: invertir es estable
-            } else {
-                j = i + 1;
-                while (j < hi && !lt(a_[j], a_[j - 1])) ++j;
-            }
-            if (j - i < RUN) {
-#ifndef SOT_NO_ZONES
-                // Zona desordenada (v8-r2): 8 o más runs naturales seguidos de menos de 8
-                // elementos. Se extiende hasta el primer run de 16 o más y se ordena con el
-                // quicksort estable: queda como un solo run.
-                std::size_t e = j, tiny = 1;
-                while (TRIV && e < hi) {            // solo tipos triviales: con strings midió peor
-                    std::size_t f = e + 1;
-                    const std::size_t cap = std::min(hi, e + 16);   // alcanza con saber si llega a 16
-                    if (f < hi && lt(a_[f], a_[e])) { ++f; while (f < cap && lt(a_[f], a_[f - 1])) ++f; }
-                    else { while (f < cap && !lt(a_[f], a_[f - 1])) ++f; }
-                    if (f - e >= (tiny >= 8 ? 16u : 8u)) break;
-                    e = f; ++tiny;
-                }
-                if (tiny >= 8) {
-                    int budget = 0;
-                    for (std::size_t k = e - i; k; k >>= 1) ++budget;
-                    adaptive_ = false;
-                    quick_from(i, e, budget, false, T{}, nullptr, 0);
-                    adaptive_ = true;
-                    j = e;
-                } else
-#endif
-                { std::size_t e2 = std::min(hi, i + RUN); insertion(i, e2); j = e2; }
-            }
+            std::size_t j = next_run(i, lo, hi, known);
             if (top > 0) {
                 int p = powerloop(st[top - 1].s - lo, st[top - 1].len, j - i, nn);
                 while (top > 1 && st[top - 2].power > p) merge_top();
