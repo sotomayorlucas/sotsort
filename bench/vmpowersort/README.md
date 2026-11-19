@@ -245,9 +245,10 @@ Moves per element (cloud, int): VM-Powersort 31.65 / 17.71 / 12.24 / 8.89 / 5.83
 SotSort v8-r5 37.74 / 15.43 / 11.90 / 8.58 / 5.49 / 2.08. Comparisons are within 2% of
 VM-Powersort for S ≥ 1000 and 11–32% fewer for S ≤ 100.
 
-Reading: with the same memory, SotSort v8-r5 is faster than Virtual-Memory Powersort in 41 of
-48 cells across both machines, by up to 2x (S = 10^6). It is not faster on near-random input
-(S = 2): there it ties on `int`, and loses on `ptr` (1.05 and 1.17; the quicksort makes more
+Reading: with the same memory, the ratio is below 1.00 in 43 of 48 cells across both
+machines, down to 0.52 (about 1.9x faster, `fastarr`, S = 10^6). The five cells at or above
+1.00 are cloud `int` S = 10^5 (1.00) and near-random input (S = 2): `int` ties (1.01, 0.99),
+and SotSort loses on `ptr` (1.05 and 1.17; the quicksort makes more
 moves than the merges, 37.74 vs 31.65 per element on `int`, and with the stricter budget its
 blocks are smaller) and on cloud `fastarr` (1.10; 0.97 on the PC). With n/2 memory against
 CPython-style Powersort (`summary.txt`, last column) SotSort still loses on slow comparisons
