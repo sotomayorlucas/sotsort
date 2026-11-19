@@ -153,3 +153,53 @@ gcc 11.4, n = 10^6, 10 iterations). `sotvm / almost`:
 Comparison and assignment counts are identical to the cloud run (deterministic). Same picture:
 roughly a tie on cheap moves, a clear loss on expensive moves. Both machines are VMs with
 2 vCPU; a bare-metal run is still missing.
+
+## Update 3: v8-r4, page merge (`results-r4/`, `results-pc-r4/`)
+
+**Correction first.** The rejected cycle-leader rotation leaked into `main` with commit
+`712122d` (it was left in the working tree); v8-r4 removes it. All "before" numbers below are
+from a clean v8-r3 (`826125b`). The previous A/B on fastarr was contaminated and is not used.
+
+**What changed in v8-r4.**
+1. *Page merge.* When both runs of a merge exceed the buffer, the range is split into pages
+   of B/8 elements and the buffer supplies 8 spare pages. Output pages go to any free page
+   (spare or already consumed input) and a final cycle-following pass puts them in order.
+   No rotations. The idea is Virtual-Memory Powersort's, adapted to a single merge. The page
+   table (4 bytes per page) is allocated on the heap and only used when it is at most 1/8 of
+   the buffer's bytes; otherwise SymMerge with rotations is used as before.
+2. *Large elements take the merge path.* With sizeof(T) ≥ 64 and page merge available, the
+   routing always picks the natural merge sort, also on random input (`SOT_MERGE_BYTES`).
+
+Moves by phase (int, n = 950 000, same memory as VM-Powersort): rotations go from 3.75–4.30 to
+0 per element. Counts, cloud run (3 iterations, per element):
+
+| assignments | S=2   | 100   | 1000  | 10^4  | 10^5 | 10^6 |
+|-------------|-------|-------|-------|-------|------|------|
+| int VM-Powersort | 32.36 | 17.74 | 12.17 | 9.10  | 6.07 | 3.70 |
+| int SotSort r3   | 34.86 | 22.33 | 17.05 | 12.49 | 8.22 | 2.26 |
+| int SotSort r4   | 34.86 | 20.14 | 14.89 | 10.30 | 5.71 | 1.38 |
+| fastarr VM-Powersort | 32.51 | 18.01 | 12.75 | 9.25 | 6.06 | 3.71 |
+| fastarr SotSort r3   | 48.96 | 30.83 | 26.20 | 21.91 | 15.48 | 4.03 |
+| fastarr SotSort r4   | 32.47 | 21.91 | 17.18 | 12.04 | 6.13 | 1.48 |
+
+Time, `sotvm / almost` (same memory), r3 → r4, n = 10^6, 10 iterations:
+
+| machine | type    | S=2  | 100  | 1000 | 10^4 | 10^5 | 10^6 |
+|---------|---------|------|------|------|------|------|------|
+| cloud   | int     | 1.09→1.08 | 1.18→1.06 | 1.06→1.02 | 1.05→0.98 | 1.15→0.92 | 1.00→0.77 |
+| cloud   | ptr     | 1.09→1.05 | 1.06→0.98 | 1.02→0.90 | 1.06→0.93 | 1.01→0.92 | 1.03→0.92 |
+| cloud   | fastarr | 1.50→1.07 | 1.30→1.04 | 1.59→1.08 | 1.66→1.16 | 1.48→0.94 | 0.82→0.58 |
+| cloud   | arr     | 1.07→0.80 | 0.81→0.82 | 0.85→0.89 | 0.88→1.04 | 0.91→1.03 | 0.80→0.78 |
+| PC      | int     | 1.04→1.05 | 1.12→1.07 | 1.11→1.06 | 1.11→1.02 | 1.16→0.97 | 0.91→0.75 |
+| PC      | ptr     | 0.98→0.96 | 0.99→0.99 | 1.04→0.86 | 1.09→1.24 | 1.11→0.97 | 0.94→1.00 |
+| PC      | fastarr | 1.44→1.03 | 1.29→0.96 | 1.23→0.95 | 1.32→0.97 | 1.21→0.89 | 0.78→0.51 |
+| PC      | arr     | 0.79→0.65 | 0.87→0.60 | 1.01→0.72 | 1.07→0.71 | 1.01→0.66 | 0.79→0.63 |
+
+Reading: with the same memory SotSort r4 is now faster than or within noise of
+Virtual-Memory Powersort in most cells, and clearly faster at S = 10^6 and on large elements
+with slow comparisons (`arr`). Where it still loses beyond noise: random integers (S = 2,
+1.05–1.08: the quicksort makes more moves than Powersort's merges there), and the cloud
+`fastarr` S = 10^4 cell (1.16; 0.97 on the PC). On random `fastarr` input, routing to merges
+costs 15% more comparisons than the quicksort (22.16 vs 19.31 per element) but saves a third
+of the moves. Both machines are 2-vCPU VMs, and the `arr` and `ptr` rows disagree between
+them by up to 0.3 in some cells, so cells within about ±10% should be read as ties.
