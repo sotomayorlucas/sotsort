@@ -194,6 +194,25 @@ Cuidado:
 - La idea de distribuir en páginas y permutar bloques es de IPS4o; lo que agrega esta
   versión es hacerla estable con el orden de volcado. No sé si eso ya existe.
 
+## 2e. En el harness de VM-Powersort (`sotps`)
+
+Implementación genérica en `bench/vmpowersort/paged_samplesort.h`. Ruteo igual que SotSort;
+con entrada casi aleatoria, samplesort por páginas con k = 64. **Todo sale del presupuesto
+de VM-Powersort**: buffer de páginas, tablas (2 + 4 bytes por ranura), muestra, separadores
+y el `Sorter` de los casos base (con su buffer propio).
+
+| tipo | S | comparaciones VM-PS / SotSort / paginado | movimientos VM-PS / SotSort / paginado |
+|---|---|---|---|
+| int | 2 | 27.76 / 18.92 / 18.98 | 31.65 / 37.74 / 22.14 |
+| fastarr | 2 | 28.09 / 21.92 / 19.08 | 32.01 / 32.13 / 17.88 |
+| int, n ≈ 10^7 | 2 | 26.07 / 21.86 / 21.92 | 29.90 / 48.18 / 26.49 |
+
+Con S = 2 el paginado hace menos comparaciones **y** menos movimientos que VM-Powersort,
+con la misma memoria. Con S ≥ 100 toma el camino de SotSort (mismos conteos ± 0.02
+comparaciones del sondeo). El harness verifica el resultado en cada corrida.
+Tiempo (indicativo, una máquina): int 1.05, ptr 0.84, fastarr 0.96, arr 0.61 respecto de
+VM-Powersort.
+
 ## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
 
 - IPS4o y su versión de revista ("Engineering In-place (Shared-memory) Sorting Algorithms",

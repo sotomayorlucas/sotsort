@@ -275,3 +275,21 @@ At 10^6 and 10^5 operation counts are equal or lower for SotSort while time is 4
 **Second machine at n = 10^7** (`results-pc-1e7-r5/`, `cells_1e7_pc.sh`, time only, 10 iterations, same binary as `results-pc-fin`):
 `sotvm / almost` = 1.09, 0.95, 0.93, 0.93, 0.95, 0.99 for S = 2 … 10^6; `sothalf / copy` = 1.06–1.09; `copy / almost` = 0.98–1.01.
 The 4–7% loss at S = 10^5 and 10^6 on the cloud VM does not appear here.
+
+## Update 6 — stable paged samplesort (`sotps`, experimental)
+
+`paged_samplesort.h` (copy into the harness `src/`; `sotsort-harness.patch` now also adds the `sotps` entry).
+Routing as SotSort; on near-random input it distributes into k = 64 groups through pages (stable by flush order,
+see `docs/IDEA_particion_paginada.md` §2d–2e) and sorts in-buffer ranges with SotSort's quicksort.
+Its buffer, page tables, sample and the base-case `Sorter` all come out of VM-Powersort's own budget (`vm_bytes`).
+Counts per element (n uniform in [0.9·10^6, 10^6], divided by 0.95·10^6), results in `results-ps/`:
+
+| type | S | comparisons VM-PS / sotvm / sotps | moves VM-PS / sotvm / sotps |
+|---|---|---|---|
+| int | 2 | 27.76 / 18.92 / 18.98 | 31.65 / 37.74 / **22.14** |
+| fastarr | 2 | 28.09 / 21.92 / 19.08 | 32.01 / 32.13 / **17.88** |
+| int, n ≈ 10^7 (1 run) | 2 | 26.07 / 21.86 / 21.92 | 29.90 / 48.18 / **26.49** |
+
+For S ≥ 100 `sotps` takes SotSort's path; counts equal `sotvm` within 0.02 comparisons per element (the routing probe).
+Time at S = 2, n ≈ 10^6, 10 runs, cloud VM, ratio to VM-PS: int 1.05, ptr 0.84, fastarr 0.96, arr 0.61
+(`sotvm`: 1.08, 1.04, 1.08, 0.71). Single machine, single session: treat as indicative only.
