@@ -18,14 +18,15 @@ SotSort is a stable comparison sort whose single code path runs with anything fr
 through the buffer and gathers them with rotations. This report summarises the design, states
 which parts are borrowed, and compares an implementation against blitsort, fluxsort, glidesort,
 driftsort, GrailSort and WikiSort. On one 2-vCPU machine, with 32- and 64-bit integers, the constant-memory mode takes
-between 0.19 and 0.75 of blitsort's time on 16 of 22 input classes and between 0.94 and
-1.09 on the other six. With a comparator that rules out the vector partition it is
-slower than blitsort on 7 of 11 classes, by up to 2.6 times on sorted input. Against
+between 0.32 and 0.82 of blitsort's time on 17 of 22 input classes and between 0.92 and
+1.07 on the other five. With a comparator that rules out the vector partition it is
+slower than blitsort on 4 of 11 classes, by up to 2.3 times on sorted input. Against
 Virtual-Memory Powersort, on its authors' own harness and with the same auxiliary memory, the
 first measurement lost on most inputs; after three changes it located (one of them adopts that
 algorithm's paging scheme), SotSort is faster in 43 of 48 type and input combinations at
-$n=10^6$ on two machines, within 4\% at $n=10^7$ for partially sorted integers, and still
-slower on near-random input with expensive moves or comparisons. All numbers are preliminary.
+$n=10^6$ on two machines. At $n=10^7$ on partially sorted integers it is between 7\% faster and
+7\% slower depending on the machine, and on near-random input it is still slower, by 9\% on
+integers and more when moves or comparisons are expensive. All numbers are preliminary.
 \end{abstract}
 
 \section{Scope and status}
