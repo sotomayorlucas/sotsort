@@ -154,6 +154,46 @@ trabajo de 4 niveles binarios por ~3.5 movimientos, ≈ 0.9 por nivel binario, c
 comparaciones por elemento por pasada. Es un samplesort estable al estilo IPS4o (que no es
 estable). Hipótesis, no medida.
 
+## 2d. Samplesort estable por páginas (prototipo, `bench/cost/paged_samplesort.cpp`)
+
+Una pasada reparte en k grupos con k páginas de salida en el buffer (P = B/k); una página
+llena se vuelca en la primera ranura libre y se anota su grupo. Los lemas 1–3 valen igual
+(al volcar se leyeron ≥ (w+1)P elementos; el índice de ranura es el orden de volcado; al
+final el espacio libre mide la suma de las parciales). Fase 2: permutación estable de
+ranuras por grupo, por ciclos. Fase 3: copiar las parciales al buffer y correr cada grupo
+hacia la derecha lo que suman las parciales de los grupos anteriores. Recursión por grupo;
+los rangos que entran en el buffer van al quicksort de SotSort. Separadores: muestra de
+8k elementos ordenada; grupo = upper_bound (≈ log2 k comparaciones).
+
+Costo por pasada ≈ 4 movimientos por elemento (clasificar, volcar, permutar, correr) y
+log2 k comparaciones, contra ≈ 2.5 movimientos y 1 comparación por nivel binario del
+quicksort actual: con k = 64, ~0.7 movimientos por nivel binario.
+
+Resultados (tipo de 8 bytes con contador, **presupuesto = el que reserva VM-Powersort para
+este tipo**, estable verificado contra `std::stable_sort` en todos los casos):
+
+| n | entrada | SotSort actual mov / cmp | paginado k=64 mov / cmp |
+|---|---|---|---|
+| 10^6 | aleatoria | 38.46 / 19.61 | 22.95 / 19.64 |
+| 10^6 | 1000 claves | 26.54 / 11.31 | 11.33 / 11.42 |
+| 10^7 | aleatoria | 48.32 / 22.94 | 26.30 / 23.05 |
+| 10^7 | 1000 claves | 31.09 / 11.15 | 10.60 / 11.87 |
+
+Referencia en el harness (con `int`, no con este tipo): VM-Powersort, S = 2, hace 31.65
+movimientos / 27.76 comparaciones por elemento en n = 10^6 y 30.71 / 26.80 en n = 10^7.
+Si se confirma en el harness, el punto débil (entrada casi aleatoria) pasaría a ser
+favorable en las dos medidas.
+
+Cuidado:
+- Las tablas (grupo por ranura, origen, marcas) son O(n/P) palabras y todavía **no** se
+  cuentan en el presupuesto; con k = 64 y n = 10^6 son ~1.4·10^3 ranuras (≈ 15 KB, ~5% del
+  presupuesto). Se pueden comprimir (log2 k bits por ranura + select), como en §2b.
+- Falta: comparar en el harness con los mismos tipos, entradas con estructura (S ≥ 100 no
+  pasa por acá), adversarios para la muestra, grupos de iguales (como IPS4o), y medir que el
+  número de pasadas sea el esperado.
+- La idea de distribuir en páginas y permutar bloques es de IPS4o; lo que agrega esta
+  versión es hacerla estable con el orden de volcado. No sé si eso ya existe.
+
 ## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
 
 - IPS4o y su versión de revista ("Engineering In-place (Shared-memory) Sorting Algorithms",

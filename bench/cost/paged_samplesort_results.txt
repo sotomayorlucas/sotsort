@@ -1,0 +1,16 @@
+n=1000000   random  B=45085   k=8   | base: mov 38.46 cmp 19.61 | paginado: mov 26.76 cmp 19.69 | ok
+n=1000000   random  B=45085   k=16  | base: mov 38.46 cmp 19.61 | paginado: mov 24.19 cmp 19.64 | ok
+n=1000000   random  B=45085   k=32  | base: mov 38.46 cmp 19.61 | paginado: mov 23.81 cmp 19.59 | ok
+n=1000000   random  B=45085   k=64  | base: mov 38.46 cmp 19.61 | paginado: mov 22.95 cmp 19.64 | ok
+n=1000000   dup1000 B=45085   k=8   | base: mov 26.54 cmp 11.31 | paginado: mov 15.25 cmp 11.48 | ok
+n=1000000   dup1000 B=45085   k=16  | base: mov 26.54 cmp 11.31 | paginado: mov 12.70 cmp 11.62 | ok
+n=1000000   dup1000 B=45085   k=32  | base: mov 26.54 cmp 11.31 | paginado: mov 12.48 cmp 11.48 | ok
+n=1000000   dup1000 B=45085   k=64  | base: mov 26.54 cmp 11.31 | paginado: mov 11.33 cmp 11.42 | ok
+n=10000000  random  B=196641  k=8   | base: mov 48.32 cmp 22.94 | paginado: mov 31.74 cmp 23.15 | ok
+n=10000000  random  B=196641  k=16  | base: mov 48.32 cmp 22.94 | paginado: mov 29.04 cmp 23.11 | ok
+n=10000000  random  B=196641  k=32  | base: mov 48.32 cmp 22.94 | paginado: mov 26.36 cmp 23.07 | ok
+n=10000000  random  B=196641  k=64  | base: mov 48.32 cmp 22.94 | paginado: mov 26.30 cmp 23.05 | ok
+n=10000000  dup1000 B=196641  k=8   | base: mov 31.09 cmp 11.15 | paginado: mov 15.06 cmp 11.50 | ok
+n=10000000  dup1000 B=196641  k=16  | base: mov 31.09 cmp 11.15 | paginado: mov 12.60 cmp 11.63 | ok
+n=10000000  dup1000 B=196641  k=32  | base: mov 31.09 cmp 11.15 | paginado: mov 10.68 cmp 12.19 | ok
+n=10000000  dup1000 B=196641  k=64  | base: mov 31.09 cmp 11.15 | paginado: mov 10.60 cmp 11.87 | ok
