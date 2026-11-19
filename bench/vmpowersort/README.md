@@ -203,3 +203,54 @@ with slow comparisons (`arr`). Where it still loses beyond noise: random integer
 costs 15% more comparisons than the quicksort (22.16 vs 19.31 per element) but saves a third
 of the moves. Both machines are 2-vCPU VMs, and the `arr` and `ptr` rows disagree between
 them by up to 0.3 in some cells, so cells within about ±10% should be read as ties.
+
+## Update 4: v8-r5, paged runs and an honest memory budget (`results-fin/`, `results-pc-fin/`)
+
+**What changed in v8-r5.**
+1. *Paged runs.* When the buffer is at most n/8 and the first 17 detected runs have a mean
+   length of at least 32, the natural merge path uses Virtual-Memory Powersort's scheme: each
+   run is copied to pages on detection, merges go page to page without permuting, and the
+   single final run is moved back once (pages already in place are not moved). Run detection
+   is SotSort's (descending reversal, insertion, disordered zones). Otherwise the v8-r4 path
+   (page merge only for merges larger than the buffer) is used.
+2. *Memory budget.* `make_plan` now counts everything allocated against `max_bytes`: the
+   buffer rounded as it is allocated (64 bytes, or 2 MB from 4 MB), the internal 16 KB buffer,
+   and the page tables (at most 1/8 of the buffer plus 4 KB). `tests/test_mem.cpp` checks the
+   peak. The only exception is a budget below the internal buffer itself (O(1) mode).
+3. *O(1) mode.* Page merge and paged runs are disabled with the internal buffer (no heap
+   tables there; this also fixes an aliasing bug between paging and disordered zones that the
+   test suite caught before release).
+4. *Code generation.* With gcc -O2 the larger functions had left the comparator or the
+   insertion loop out of line (up to 30% with expensive comparisons); the hot loops are now
+   kept inline explicitly. Found by comparing operation counts (identical) with times.
+
+So "same memory" below is now literal for SotSort; v8-r4 (`sot4*`, previous `main`) could
+exceed the budget by its page tables, the internal buffer and allocation rounding.
+
+Both versions are in the same binary (`sot4*` = v8-r4 at `a0ec5dc`, `sot*` = v8-r5), n = 10^6,
+10 runs for time, 2 for counts. Time, SotSort / VM-Powersort with the same memory:
+
+| machine | type    | S=2  | 100  | 1000 | 10^4 | 10^5 | 10^6 |
+|---------|---------|------|------|------|------|------|------|
+| cloud   | int     | 1.01 | 0.88 | 0.88 | 0.89 | 1.00 | 0.78 |
+| cloud   | ptr     | 1.05 | 0.79 | 0.82 | 0.80 | 0.93 | 0.97 |
+| cloud   | fastarr | 1.10 | 0.79 | 0.89 | 0.88 | 0.90 | 0.57 |
+| cloud   | arr     | 0.80 | 0.84 | 0.85 | 0.96 | 0.94 | 0.77 |
+| PC      | int     | 0.99 | 0.91 | 0.89 | 0.83 | 0.98 | 0.72 |
+| PC      | ptr     | 1.17 | 0.68 | 0.63 | 0.71 | 0.92 | 0.85 |
+| PC      | fastarr | 0.97 | 0.84 | 0.84 | 0.87 | 0.89 | 0.52 |
+| PC      | arr     | 0.67 | 0.79 | 0.84 | 0.82 | 0.66 | 0.58 |
+
+Moves per element (cloud, int): VM-Powersort 31.65 / 17.71 / 12.24 / 8.89 / 5.83 / 4.04;
+SotSort v8-r5 37.74 / 15.43 / 11.90 / 8.58 / 5.49 / 2.08. Comparisons are within 2% of
+VM-Powersort for S ≥ 1000 and 11–32% fewer for S ≤ 100.
+
+Reading: with the same memory, SotSort v8-r5 is faster than Virtual-Memory Powersort in 41 of
+48 cells across both machines, by up to 2x (S = 10^6). It is not faster on near-random input
+(S = 2): there it ties on `int`, and loses on `ptr` (1.05 and 1.17; the quicksort makes more
+moves than the merges, 37.74 vs 31.65 per element on `int`, and with the stricter budget its
+blocks are smaller) and on cloud `fastarr` (1.10; 0.97 on the PC). With n/2 memory against
+CPython-style Powersort (`summary.txt`, last column) SotSort still loses on slow comparisons
+(`ptr` 1.11–1.56) and wins or ties on slow moves; that comparison was not the target here.
+Both machines are 2-vCPU VMs; the same build was measured on both; cells within about ±10%
+should still be read as ties.

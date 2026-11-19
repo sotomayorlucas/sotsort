@@ -9,7 +9,7 @@ index 290c34d..f04f28a 100644
  HEADERNAMES := almost_inplace_powersort common copy_powersort inplace_powersort simple_powersort wikisort
  HEADERS := $(addprefix src/, $(addsuffix .h, $(HEADERNAMES)))
 diff --git a/src/main.cpp b/src/main.cpp
-index 885a9d2..d5bbc10 100644
+index 885a9d2..2d2fb41 100644
 --- a/src/main.cpp
 +++ b/src/main.cpp
 @@ -1,4 +1,6 @@
@@ -19,15 +19,16 @@ index 885a9d2..d5bbc10 100644
  #include <array>
  #include <cassert>
  #include <iomanip>
-@@ -15,6 +17,7 @@
+@@ -15,6 +17,8 @@
  #include "inplace_powersort.h"
  #include "simple_powersort.h"
  #include "wikisort.h"
 +#include "sotsort.hpp"
++#include "sot4.hpp"
  using namespace std;
  
  long long dummy;
-@@ -27,6 +30,25 @@ template <typename T> static void my_stable_sort(T *v, T *ep) {
+@@ -27,6 +31,31 @@ template <typename T> static void my_stable_sort(T *v, T *ep) {
      stable_sort(v, ep);
  }
  
@@ -45,6 +46,12 @@ index 885a9d2..d5bbc10 100644
 +    sot::Options o; o.threads = 1; o.probe = false; o.shortcuts = false; o.max_bytes = bytes;
 +    sot::stable_sort_fast(v, size_t(ep - v), std::less<T>(), o);
 +}
++template <typename T> static void sot4_with(T *v, T *ep, size_t bytes) {
++    sot4::Options o; o.threads = 1; o.probe = false; o.shortcuts = false; o.max_bytes = bytes;
++    sot4::stable_sort_fast(v, size_t(ep - v), std::less<T>(), o);
++}
++template <typename T> static void my_sot4vm(T *v, T *ep) { sot4_with(v, ep, vm_bytes<T>(ep - v)); }
++template <typename T> static void my_sot4half(T *v, T *ep) { sot4_with(v, ep, sizeof(T) * size_t(ep - v) / 2); }
 +template <typename T> static void my_sot0(T *v, T *ep) { sot_with(v, ep, 0); }
 +template <typename T> static void my_sotvm(T *v, T *ep) { sot_with(v, ep, vm_bytes<T>(ep - v)); }
 +template <typename T> static void my_sothalf(T *v, T *ep) { sot_with(v, ep, sizeof(T) * size_t(ep - v) / 2); }
@@ -53,14 +60,14 @@ index 885a9d2..d5bbc10 100644
  template <typename T, bool count_comps = false, bool count_assignments = false>
  struct wrapper {
      T t;
-@@ -123,7 +145,9 @@ map<string, table_element<T, count_comps, count_assignments>> elements = {
+@@ -123,7 +152,9 @@ map<string, table_element<T, count_comps, count_assignments>> elements = {
      make_pair(string("wiki"),
                table_element<T, count_comps, count_assignments>{
                    0, 0, 0, 0, 0, 0, 
 -                  &my_wikisort<wrapper<T, count_comps, count_assignments>>})};
 +                  &my_wikisort<wrapper<T, count_comps, count_assignments>>}),
 +#define SOTENT(NAME, F) make_pair(string(NAME), table_element<T, count_comps, count_assignments>{0, 0, 0, 0, 0, 0, &F<wrapper<T, count_comps, count_assignments>>})
-+    SOTENT("sot0", my_sot0), SOTENT("sotvm", my_sotvm), SOTENT("sothalf", my_sothalf), SOTENT("sotfull", my_sotfull)};
++    SOTENT("sot0", my_sot0), SOTENT("sotvm", my_sotvm), SOTENT("sothalf", my_sothalf), SOTENT("sotfull", my_sotfull), SOTENT("sot4vm", my_sot4vm), SOTENT("sot4half", my_sot4half)};
  
  void help() {
      cerr
