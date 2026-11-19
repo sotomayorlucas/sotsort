@@ -397,7 +397,9 @@ private:
         // buffer alcanza para la mezcla por páginas, las mezclas (~1,5 movimientos por elemento y
         // nivel) le ganan al quicksort (dos escrituras por elemento y nivel, más rotaciones),
         // también con entrada aleatoria. Medido en una sola máquina; SOT_MERGE_BYTES=0 lo apaga.
-        if constexpr (SOT_MERGE_BYTES > 0 && sizeof(T) >= SOT_MERGE_BYTES) { if (page_ok(n)) return true; }
+        if constexpr (SOT_MERGE_BYTES > 0 && sizeof(T) >= SOT_MERGE_BYTES) {
+            if (page_ok(n)) return true;
+        }
 #ifndef SOT_EXACT_TURNS
         // v8-r3: con n grande, la densidad de giros se estima con 64 ventanas de 256 pares
         // (desplazamiento aleatorio). Contarlos todos costaba una comparación por elemento,
@@ -440,7 +442,6 @@ private:
     }
     // Regla de ruta común: g giros (contados o estimados) en n elementos.
     bool route_by_turns(std::size_t n, std::size_t g) {
-        est_runs_ = g / 2 + 1;
         if (g * 8 >= n) return false;
         if (!TRIV) return true;                        // tipos no triviales: la regla de ruta midió peor (strings)
         if (sample_ordered(n)) return true;            // orden global: mezclas con rachas largas
@@ -950,7 +951,6 @@ private:
     // Lugar: en uso hay a lo sumo Σ⌈len/P⌉ ≤ n/P + runs páginas más 3 transitorias de la mezcla;
     // hay ⌊n/P⌋ del arreglo más K del buffer, y la pila de powersort tiene a lo sumo ⌈lg n⌉ + 2 runs.
     bool paging_ = false;
-    std::size_t est_runs_ = ~std::size_t(0);   // runs estimados por la sonda de giros (sin sonda: muchos)
     std::vector<std::uint32_t> pr_stk_, pr_tmp_, pr_pos_, pr_fr_, pr_cur_;
     std::size_t paged_K(std::size_t n) const { std::size_t k = 0; while ((std::size_t(1) << k) < n) ++k; return k + 8; }
     std::size_t paged_P(std::size_t n) const {
@@ -958,19 +958,21 @@ private:
         while (p * 2 <= q) p *= 2;
         return p;
     }
+    // ¿Se puede paginar? Solo con un buffer reservado aparte: en modo O(1) (buffer propio) la
+    // tabla de páginas rompería la cota de memoria y las zonas usan el buffer propio.
     bool paged_ok(std::size_t n) const {
-        // Con pocos runs, copiar a páginas y volver cuesta más que mezclar directo (mezcla por
-        // páginas de v8-r4): el camino paginado se usa con 16 runs estimados o más.
-        // Solo con un buffer reservado aparte: en modo O(1) (buffer propio) la tabla de páginas
-        // rompería la cota de memoria y las zonas usan el buffer propio como lugar de trabajo.
-        if (buf_ == own_ || n < 4096 || B_ * 2 >= n || est_runs_ < 16) return false;
+        if (buf_ == own_ || n < 4096 || B_ * 2 >= n) return false;
         const std::size_t P = paged_P(n);
         if (P < 64) return false;
         const std::size_t pages = n / P + paged_K(n) + 2;
         if (pages >= (std::size_t(1) << 31)) return false;
         return pages * sizeof(std::uint32_t) * 5 <= B_ * sizeof(T) / 8 + 4096;
     }
-    void paged_natural_merge_sort(std::size_t lo, std::size_t hi, std::size_t known) {
+    // Decisión de paginar (natural_merge_sort detecta primero hasta PG_PRE runs): con pocos runs
+    // copiar a páginas y volver cuesta más que mezclar directo, y con runs muy cortos (menos de
+    // 32 en promedio) paginar midió peor con comparaciones caras.
+    static constexpr int PG_PRE = 17;
+    void paged_natural_merge_sort(std::size_t lo, std::size_t hi, std::size_t known, const std::size_t (*pre)[2], int npre) {
         const std::size_t n = hi - lo, K = paged_K(n), P = paged_P(n), NA = n / P;
         T* const A = a_ + lo;
         auto base = [&](std::uint32_t ph) -> T* { return ph < NA ? A + std::size_t(ph) * P : buf_ + std::size_t(ph - NA) * P; };
@@ -1032,8 +1034,9 @@ private:
             pr_stk_.insert(pr_stk_.end(), pr_tmp_.begin(), pr_tmp_.end());
         };
         std::size_t i = lo;
+        int ip = 0;
         while (i < hi) {
-            std::size_t j = next_run(i, lo, hi, known);
+            std::size_t j = ip < npre ? pre[ip++][1] : next_run(i, lo, hi, known);
             // copiar [i, j) a páginas y liberar las páginas completas del arreglo ya copiadas
             pr_cur_.clear();
             for (std::size_t t = i; t < j; t += P) {
@@ -1126,8 +1129,14 @@ private:
     }
 
     void natural_merge_sort(std::size_t lo, std::size_t hi, std::size_t known) {
+        std::size_t pre[PG_PRE][2];
+        int npre = 0;
 #ifndef SOT_NO_PAGED_RUNS
-        if (paged_ok(hi - lo)) { paged_natural_merge_sort(lo, hi, known); return; }
+        if (paged_ok(hi - lo)) {
+            std::size_t i = lo;
+            while (i < hi && npre < PG_PRE) { std::size_t j = next_run(i, lo, hi, known); pre[npre][0] = i; pre[npre][1] = j; ++npre; i = j; }
+            if (npre == PG_PRE && i < hi && (i - lo) / PG_PRE >= 32) { paged_natural_merge_sort(lo, hi, known, pre, npre); return; }
+        }
 #endif
         struct Run { std::size_t s, len; int power; } st[STACK];
         int top = 0;
@@ -1138,8 +1147,9 @@ private:
             sym_merge(X.s, X.s + X.len, Y.s + Y.len);
             X.len += Y.len; --top;
         };
+        int ip = 0;
         while (i < hi) {
-            std::size_t j = next_run(i, lo, hi, known);
+            std::size_t j = ip < npre ? pre[ip++][1] : next_run(i, lo, hi, known);
             if (top > 0) {
                 int p = powerloop(st[top - 1].s - lo, st[top - 1].len, j - i, nn);
                 while (top > 1 && st[top - 2].power > p) merge_top();
