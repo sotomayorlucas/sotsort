@@ -117,6 +117,58 @@ La actual crece con lg(m/B); la paginada queda en ≈ 3.5 con mitades iguales.
   podría evitar parte de eso; no está analizado.
 - Todavía no está integrada al quicksort ni medida en el harness de VM-Powersort.
 
+## 2c. Integración (opción `SOT_PAGED_PART`, apagada por defecto)
+
+`stable_partition` usa la versión paginada cuando m > 8B y P = B/2 ≥ 64. Pasa la suite
+completa (differential, extra, OOO, ASan+UBSan). Error encontrado al integrar: sin parcial
+izquierda la fase 3 se autoasignaba cada elemento; con `std::string` eso vacía el contenido
+(con enteros no se nota). Corregido en el prototipo y en la integración.
+
+Conteos en el harness de VM-Powersort (`int`, misma memoria, n ≈ 10^6; resultados en
+`bench/vmpowersort/results-pp/`). Solo cambia S = 2:
+
+| S | comparaciones VM-PS / SotSort | movimientos VM-PS / base / paginada |
+|---|---|---|
+| 2 | 27.76 / 18.92 | 31.65 / 37.74 / 35.37 |
+| ≥ 100 | sin cambios | sin cambios (no pasa por el quicksort) |
+
+Desglose con un tipo contador y el mismo presupuesto (`bench/cost/breakdown.cpp`,
+movimientos por elemento, entrada aleatoria):
+
+| n | total | hojas | particiones | total con paginada | particiones con paginada |
+|---|---|---|---|---|---|
+| 10^6 | 40.04 | 6.73 | 33.24 | 37.35 | 30.55 |
+| 10^7 | 51.78 | 6.73 | 44.98 | 44.93 | 38.13 |
+
+Lectura: la mejora es real pero chica, porque con este presupuesto B ≈ 7·10^4 elementos
+(n = 10^6) y solo los niveles altos tienen m/B > 8. El costo dominante es otro: **el
+quicksort binario hace ~13 niveles de partición y cada uno cuesta ≥ 1.5 movimientos por
+elemento** (los que van a la derecha pasan por el buffer y vuelven). VM-Powersort paga ~1.6
+por nivel en ~20 niveles; SotSort paga ~2.5 por nivel en ~13, más las hojas. A cambio hace
+32% menos comparaciones.
+
+Consecuencia: para bajar movimientos hay que **bajar la cantidad de niveles**, no solo
+abaratar cada partición. La partición paginada se generaliza a k vías sin cambiar su costo
+por pasada (~3.5 movimientos por elemento; log2 k bits por página): 16 vías harían el
+trabajo de 4 niveles binarios por ~3.5 movimientos, ≈ 0.9 por nivel binario, con ~log2 k
+comparaciones por elemento por pasada. Es un samplesort estable al estilo IPS4o (que no es
+estable). Hipótesis, no medida.
+
+## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
+
+- IPS4o y su versión de revista ("Engineering In-place (Shared-memory) Sorting Algorithms",
+  TOPC 2022): clasificación en bloques de buffer, volcado en bloques ya leídos y permutación
+  de bloques. **No preserva el orden de los bloques dentro de un bucket**, así que no es
+  estable; la revista no describe una variante estable de la permutación de bloques.
+- Katajainen y Pasanen (BIT 1992): partición estable en O(n) tiempo y O(1) espacio.
+  Resultado teórico; constantes grandes, no orientado a movimientos con buffer.
+- glidesort y el quicksort estable de la biblioteca estándar de Rust: partición estable a
+  un scratch de tamaño proporcional a n (n/8 o más); no paginan.
+- VM-Powersort: páginas para **mezclas**, no para particiones.
+- No encontré una partición estable paginada con un bit por página. Eso **no** prueba que
+  sea nueva: falta buscar en literatura de external memory / stable distribution sort y
+  preguntar.
+
 ## 4. Próximos pasos
 
 1. ~~Demostración del invariante~~ y ~~prototipo~~ (sección 2b).
