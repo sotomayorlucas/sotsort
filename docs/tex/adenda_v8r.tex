@@ -8,7 +8,7 @@
 \title{\textbf{SotSort v8-r}\\[3pt]\large Adenda al resumen y al libro: reconstrucción,\\
 optimizaciones nuevas y planificación fuera de orden}
 \author{Lucas Sotomayor}
-\date{17 de noviembre de 2026 --- borrador}
+\date{17 de noviembre de 2026; sección~\ref{sec:r6} agregada el 19 de noviembre --- borrador}
 \renewcommand{\tablename}{Tabla}
 \renewcommand{\contentsname}{Índice}
 \begin{document}
@@ -209,6 +209,40 @@ interno es $O(\lg(\lambda/B))$. La idea no es nueva: es quicksort paralelo por t
 (Cilk, TBB) con un modelo de dependencias como el de StarSs/OmpSs; las citas están
 hechas de memoria y hay que verificarlas.
 
+\section{Revisiones r3 a r6: memoria acotada y operaciones contadas}\label{sec:r6}
+Esta sección resume lo que cambió entre el 18 y el 19 de noviembre, después de comparar SotSort
+con Virtual-Memory Powersort (Moltmann, Nakajima y Wild, ESA 2026) en el arnés de sus autores y
+con la misma memoria. Los detalles, demostraciones y pruebas están en
+\texttt{docs/IDEA\_particion\_paginada.md}, \texttt{docs/LEMAS\_v8r.md} (observaciones T, P y S)
+y el informe técnico, revisión 6.
+
+\paragraph{Cambios.} r3: la densidad de giros se estima con 64 ventanas de 256 pares. r4: mezcla
+por páginas cuando los dos runs superan el buffer. r5: runs paginados (esquema de VM-Powersort) y
+un presupuesto de memoria que cuenta todo lo que se reserva. r6: (a) la partición estable binaria
+cuesta al menos 1{,}5 movimientos por elemento y nivel, más rotaciones que crecen con
+$\lg(m/B)$; (b) con buffer acotado y entrada casi aleatoria, un samplesort estable de $k$ vías por
+páginas reemplaza la parte alta del quicksort; (c) el quicksort tolera a lo sumo 4 particiones
+malas; (d) el grupo de cada elemento se calcula bajando un árbol implícito de separadores sin
+saltos.
+
+\paragraph{La pasada por páginas.} Cada grupo tiene una página de salida en el buffer; una página
+llena se copia a la primera página del tramo que ya se terminó de leer, y se anota su grupo. Tres
+hechos la hacen estable: al volcar la página $f$ ya se leyeron al menos $(f+1)P$ elementos; el
+índice de la ranura es el orden de volcado; al final el espacio libre mide exactamente lo que
+suman las páginas parciales. Una permutación por ciclos agrupa las páginas y las parciales se
+intercalan, de modo que cada grupo queda contiguo. El mecanismo de reutilizar bloques consumidos
+viene de Radsort (Clausecker y Schintke, 2026) y el de reordenar bloques de un solo tipo de
+Logsort (aphitorite); lo propio es la versión por comparaciones, de arriba hacia abajo, dentro de
+un ordenamiento adaptativo.
+
+\paragraph{Resultado.} Con la memoria de VM-Powersort, en las 12 celdas que el arnés puede contar
+(\texttt{int} y \texttt{fastarr}, $S$ de 2 a $10^6$), SotSort no hace más comparaciones (salvo
+$+0{,}02$ por elemento) ni más movimientos. Con entrada casi aleatoria ($S=2$, $n\approx10^6$,
+enteros): 18{,}96 comparaciones y 22{,}10 movimientos por elemento, contra 27{,}76 y 31{,}65.
+En tiempo, solo como indicación (dos máquinas virtuales): 0{,}72--0{,}78 de VM-Powersort con
+enteros y $S=2$. El adversario de McIlroy, conociendo la semilla, lleva el peor caso medido a unos
+34 movimientos por elemento; VM-Powersort, que es un mergesort, no tiene esa debilidad.
+
 \section{Limitaciones}
 \begin{itemize}[nosep]
 \item Una sola máquina, virtualizada y compartida; sin contadores de hardware; sin ARM.
@@ -216,6 +250,9 @@ hechas de memoria y hay que verificarlas.
   sobre varias de las mismas entradas con las que después se compara: las filas de datos
   con estructura de las tablas~\ref{tab:o1} y~\ref{tab:abs} son optimistas.
 \item Si el comparador lanza una excepción se pueden perder elementos.
+\item El samplesort por páginas solo corre con buffer de bloques: en modo $O(1)$ sus tablas no
+  entran y sigue el quicksort. Su peor caso está acotado por $O(n\log n)$, pero la constante solo
+  se midió contra un adversario.
 \item Nada está verificado mecánicamente; la correspondencia entre el pseudocódigo y el
   código se apoya en pruebas diferenciales (19\,506 casos sin fallas, más las variantes
   con AVX2, sin SIMD, clang y los \emph{sanitizers}).

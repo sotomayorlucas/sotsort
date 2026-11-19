@@ -74,7 +74,8 @@ pages are always written to the next slot, so the slot index is the flush order;
 end the free space is exactly the total size of the partial pages. A cycle-following
 permutation then groups the slots by group, keeping their order, and the partial pages are
 shifted in, so each group is contiguous and the recursion runs on real ranges. One pass costs
-at most $m\lceil\lg k\rceil$ comparisons and about $4m$ moves, against about 1 comparison and
+$m\lg k$ comparisons ($k$ is a power of two; the group is found by descending an implicit
+splitter tree without data-dependent branches) and about $4m$ moves, against about 1 comparison and
 $\ge1.5$ moves per binary level of the quicksort. Ranges that fit in the buffer, and paths with
 two consecutive passes whose largest group exceeds half the range, go to the quicksort; a path
 makes at most $2\log_k n+2$ passes. The tables (6 bytes per slot) come out of the plan's table
@@ -110,7 +111,8 @@ the caveat above: the unequal-length parity merge without bounds checks, the sta
 partition, the unified constant-to-linear memory design with proofs parametrised by $B$, and the
 three routing probes above. For the paged samplesort, the mechanism of reusing consumed blocks
 and recording each block's group is Radsort's~\cite{radsort}, and grouping into one-type blocks
-whose order is recorded and restored by cycles is Logsort's~\cite{logsort}; what is mine is the
+whose order is recorded and restored by cycles is Logsort's~\cite{logsort}, and the branchless
+splitter tree is IPS$^4$o's~\cite{ips4o}; what is mine is the
 comparison-based, MSD form with contiguous groups after every pass inside an adaptive sort.
 
 \paragraph{Closest related work.} Moltmann, Nakajima and Wild~\cite{vmpowersort} attack the
@@ -285,15 +287,21 @@ comparisons) and $S=10^6$. At $n\approx10^7$ (\texttt{int}, $S=2$, one run) it m
 comparisons and 23.50 moves per element against 26.07 and 29.90. With $n/2$ memory against
 CPython-style Powersort it makes fewer comparisons and moves at $S=2$ (18.96 and 22.11 against
 27.76 and 35.52 for \texttt{int}) but more moves for $S\ge1000$ (e.g.\ 13.96 against 13.54 at
-$S=1000$, 1.73 against 1.45 at $S=10^6$). Times, as an indication only (cloud VM, one session,
-$n\approx10^6$, 10 runs; SotSort over Virtual-Memory Powersort for $S=2$, 100 and $10^6$):
-\texttt{int} 1.02, 0.98, 0.83; \texttt{ptr} 0.88, 0.72, 0.98; \texttt{fastarr} 0.89, 0.86, 0.56;
-\texttt{arr} 0.59, 0.88, 0.81. On the second machine of revision 5 (Core Ultra 7 VM): 1.12, 0.96,
-0.78; 0.78, 0.63, 0.93; 0.94, 0.82, 0.52; 0.54, 0.78, 0.61. So with cheap integers at $S=2$ SotSort is
-2--12\% slower in time while making about 30\% fewer moves and comparisons; the likely cause, not
-measured, is the branchy binary search that classifies each element (IPS$^4$o uses a branchless
-decision tree). Repeated runs of identical code moved time ratios by up to about 10\%, so I do not
-read small time differences as results.
+$S=1000$, 1.73 against 1.45 at $S=10^6$). Times, as an indication only ($n\approx10^6$, 10 runs, SotSort over Virtual-Memory Powersort
+at $S=2$, cloud VM / Core Ultra 7 VM): \texttt{int} 0.72 / 0.78, \texttt{ptr} 0.82 / 0.86,
+\texttt{fastarr} 0.73 / 0.73, \texttt{arr} 0.55 / 0.57. Before the branchless classification
+(next paragraph) the \texttt{int} ratio was 1.01 / 1.11 despite the lower counts. Repeated runs
+of identical code moved time ratios by up to about 10\%, so I do not read small time differences
+as results.
+
+\paragraph{Classification without branches.} The first version found each element's group by
+binary search, with one data-dependent branch per level. Version 8-r6 stores the splitters as an
+implicit tree (node $i$ has children $2i$ and $2i+1$; in-order is sorted order) and computes the
+group as $\lg k$ steps of $b\leftarrow 2b+[\,\text{splitter}_b\le x\,]$, as IPS$^4$o's decision
+tree does. Counts are unchanged. Measured as A/B in the same binary with both orders, the
+\texttt{int} time ratio at $S=2$ went from 1.01 to 0.72 (cloud) and from 1.11 to 0.78 (PC);
+\texttt{arr} on the PC went from 0.52 to 0.57, the one cell that got slower. This supports the
+branch-misprediction explanation; without hardware counters it does not prove it.
 
 \paragraph{Worst case.} McIlroy's adaptive adversary, run against the samplesort with its fixed
 seed and the same budget, first produced 95 comparisons and 123 moves per element at $n=10^6$.
@@ -329,7 +337,7 @@ covers its harness, its two counting types and its run distribution only.
 \section{Availability}\label{sec:avail}
 Code, tests, the benchmark harness and raw measurements: \url{https://github.com/sotomayorlucas/sotsort},
 code at commit \texttt{c16d43f} for version 8-r, \texttt{b9e0df1} for version 8-r5 and
-\texttt{9b8b554} for version 8-r6 (MPL-2.0). Notes on the paged partition and samplesort
+\texttt{ef55874} for version 8-r6 (MPL-2.0). Notes on the paged partition and samplesort
 (cost model, proof sketch, tests, prior art; in Spanish): \texttt{docs/IDEA\_particion\_paginada.md}.
 The Virtual-Memory Powersort comparison is in \texttt{bench/vmpowersort}: a patch to their
 harness, the scripts and the raw results; their code is not redistributed.
