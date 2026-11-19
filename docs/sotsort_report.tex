@@ -6,9 +6,9 @@
 \usepackage{amsmath,amssymb,booktabs,microtype}
 \usepackage[hidelinks]{hyperref}
 \title{\textbf{SotSort}: a stable quicksort with a tunable buffer\\[3pt]
-\large Design summary and an experimental comparison (versions 8-r and 8-r5)}
+\large Design summary and an experimental comparison (version 8-r6)}
 \author{Lucas Sotomayor}
-\date{19 November 2026 --- technical report, draft (revision 5)}
+\date{19 November 2026 --- technical report, draft (revision 6)}
 \begin{document}
 \maketitle
 
@@ -17,23 +17,27 @@ SotSort is a stable comparison sort whose single code path runs with anything fr
 16\,KB buffer to a full $n$-element buffer. Its core is a stable quicksort that partitions blocks
 through the buffer and gathers them with rotations. This report summarises the design, states
 which parts are borrowed, and compares an implementation against blitsort, fluxsort, glidesort,
-driftsort, GrailSort and WikiSort. On one 2-vCPU machine, with 32- and 64-bit integers, the constant-memory mode takes
-between 0.32 and 0.82 of blitsort's time on 17 of 22 input classes and between 0.92 and
-1.07 on the other five. With a comparator that rules out the vector partition it is
-slower than blitsort on 4 of 11 classes, by up to 2.3 times on sorted input. Against
-Virtual-Memory Powersort, on its authors' own harness and with the same auxiliary memory, the
-first measurement lost on most inputs; after three changes it located (one of them adopts that
-algorithm's paging scheme), SotSort is faster in 43 of 48 type and input combinations at
-$n=10^6$ on two machines. At $n=10^7$ on partially sorted integers it is between 7\% faster and
-7\% slower depending on the machine, and on near-random input it is still slower: by 9\% on
-integers at $n=10^7$, and by 5 to 17\% at $n=10^6$ when comparisons are expensive. All numbers are preliminary.
+driftsort, GrailSort and WikiSort, and against Virtual-Memory Powersort on its authors' harness.
+The second comparison is reported mainly in comparisons and element moves, which do not depend on
+the machine. Counting moves showed a structural cost: the binary stable partition pays at least
+1.5 moves per element and level, plus rotations growing with $\lg(n/B)$. Version 8-r6 replaces
+it, for near-random input with a bounded buffer, by a stable $k$-way samplesort that works
+through pages and records the group of each page; the block-reuse mechanism comes from
+Radsort, an LSD radix sort, and the ordered block rearrangement from Logsort. With exactly the
+memory Virtual-Memory Powersort allocates, SotSort now makes no more comparisons or moves than
+it on any measured input class and element type, up to $+0.02$ comparisons per element;
+on near-random input it makes 18.96 comparisons and 22.10 moves per element against 27.76 and
+31.65 ($n\approx10^6$, integers). Its worst case remains weaker: an adaptive adversary that
+knows the seed raises it to about 34 moves per element. All numbers are preliminary.
 \end{abstract}
 
 \section{Scope and status}
 This report describes and measures one artifact, \texttt{include/sotsort.hpp}, at version
-8-r5; the changes since version 8-r came from the comparison with Virtual-Memory Powersort
-(Section~\ref{sec:vmps}). Two measurements in Section~\ref{sec:exp} (routing heuristics and
-adversaries) are from version 8-r and were not repeated. Both commits are given in
+8-r6; the changes since version 8-r came from the comparison with Virtual-Memory Powersort
+(Section~\ref{sec:vmps}). The time tables of Section~\ref{sec:exp} were measured with version
+8-r5; the changes of 8-r6 do not reach those paths (the samplesort only runs with a bounded
+block buffer, and the new budget is never exhausted on those inputs: operation counts are
+identical). The paragraph on routing heuristics is from version 8-r. Commits are given in
 Section~\ref{sec:avail}. The proofs (Hoare-style, in Spanish) cover
 the algorithms as specified; they are not machine-checked, and the correspondence between the
 proofs and this C++ file rests on differential testing (Section~\ref{sec:tests}). I have not
@@ -55,8 +59,26 @@ and no binary search is needed.
 \paragraph{Quicksort.} The pivot is a copy (a ninther up to $2^{13}$ elements, the median of
 about $2n^{1/3}$ samples above), taken at pseudorandom offsets. A lower bound inherited from the
 parent detects ``no element is smaller than the pivot''; the elements equal to the pivot are then
-separated and are final. Unbalanced steps consume a budget of $\lfloor\lg n\rfloor+1$; when it
-runs out, the range is finished by a bottom-up SymMerge sort.
+separated and are final. Unbalanced steps consume a budget of $\min(\lfloor\lg n\rfloor+1,\,4)$;
+when it runs out, the range is finished by a bottom-up merge sort. (Before 8-r6 the budget was
+$\lfloor\lg n\rfloor+1$; an adaptive adversary could spend all of it at 2.5--4 moves per element
+each, Section~\ref{sec:vmps}.)
+
+\paragraph{Paged samplesort (new in 8-r6).} With a bounded block buffer of $B<n/2$ elements and
+near-random input, the quicksort is replaced at the top by a stable $k$-way samplesort
+($k\le64$). The buffer holds one output page of $P\approx B/k$ elements per group. Each element
+goes to its group's page; a full page is copied to the first page-sized slot of the range that
+has already been read, and its group is recorded. Three facts make this a stable distribution:
+when the $f$-th page is flushed at least $(f+1)P$ elements have been read, so the slot is free;
+pages are always written to the next slot, so the slot index is the flush order; and at the
+end the free space is exactly the total size of the partial pages. A cycle-following
+permutation then groups the slots by group, keeping their order, and the partial pages are
+shifted in, so each group is contiguous and the recursion runs on real ranges. One pass costs
+at most $m\lceil\lg k\rceil$ comparisons and about $4m$ moves, against about 1 comparison and
+$\ge1.5$ moves per binary level of the quicksort. Ranges that fit in the buffer, and paths with
+two consecutive passes whose largest group exceeds half the range, go to the quicksort; a path
+makes at most $2\log_k n+2$ passes. The tables (6 bytes per slot) come out of the plan's table
+reserve. A proof sketch and exhaustive tests on small inputs are in the repository.
 
 \paragraph{Leaves and merges.} Ranges of at most 128 elements are split into power-of-two chunks
 sorted by parity merges between the array and the buffer. A parity merge of unequal lengths $a$
@@ -86,14 +108,21 @@ treatment of duplicates (pdqsort), the budget fallback (introsort), SymMerge (Ki
 merge path for the parallel mode, and counting sort. \textbf{What I believe is mine}, subject to
 the caveat above: the unequal-length parity merge without bounds checks, the stable vector block
 partition, the unified constant-to-linear memory design with proofs parametrised by $B$, and the
-three routing probes above.
+three routing probes above. For the paged samplesort, the mechanism of reusing consumed blocks
+and recording each block's group is Radsort's~\cite{radsort}, and grouping into one-type blocks
+whose order is recorded and restored by cycles is Logsort's~\cite{logsort}; what is mine is the
+comparison-based, MSD form with contiguous groups after every pass inside an adaptive sort.
 
 \paragraph{Closest related work.} Moltmann, Nakajima and Wild~\cite{vmpowersort} attack the
 same trade-off from the mergesort side: Virtual-Memory Powersort lowers the buffer of an adaptive
 stable mergesort from $n/2$ to $O(\sqrt{n\log n})$ elements with the same moves and comparisons
 up to an additive $O(n)$. SotSort starts instead from a constant buffer and a stable quicksort.
 Section~\ref{sec:vmps} compares the two on their harness and describes the parts of their
-scheme that version 8-r5 adopts. The natural-run path uses the power criterion of
+scheme that SotSort adopts. Radsort~\cite{radsort} (Clausecker and Schintke) is a stable LSD
+radix sort with $O(\sqrt n)$ extra space that reuses consumed input blocks for output; its authors
+leave the MSD form as future work. Logsort~\cite{logsort} is an in-place stable quicksort that
+groups elements into one-type blocks and encodes their order inside the blocks. IPS$^4$o~\cite{ips4o}
+distributes through buffer blocks and permutes blocks, without stability. The natural-run path uses the power criterion of
 Powersort~\cite{powersort}. Its galloping follows Timsort; Ghasemi, Jugé and
 Khalighinejad~\cite{galloping} analyse galloping in this family of natural merge sorts. The
 branch-free block partition pursues the goal of BlockQuicksort~\cite{blockqs}, avoiding branch
@@ -189,7 +218,8 @@ $\lg n!$ comparisons; SotSort makes 1.10. This is not a differentiator.
 
 \paragraph{Adversaries.} McIlroy's adversary, which fixes values lazily, loses to any sort with
 a run-detection pass, so a random fraction ($10^{-3}$ to $10^{-1}$) of positions was frozen in
-advance. The largest count over $n=10^5,10^6$ was $1.14\,n\lg n$ for SotSort, $0.65$ for
+advance. The largest count over $n=10^5,10^6$ was $0.70\,n\lg n$ for SotSort (8-r6; it was
+$1.14$ in 8-r, before the smaller budget), $0.65$ for
 blitsort, $1.96$ for driftsort and $3.67$ for ipnsort. No sort showed quadratic behaviour; this
 is evidence, not a proof. A second, lazy adversary that gives every pair of undefined elements
 the same minimal value was run against the quicksort alone. With the budget charge on the
@@ -213,71 +243,60 @@ SotSort's plan counts against it everything it allocates (the buffer as rounded 
 allocator, its internal 16\,KB buffer and its page tables); a test checks the peak.
 
 \paragraph{What the comparison changed.} The first measurement (version 8-r) lost on most
-inputs. Counting operations located three causes, fixed in versions 8-r3 to 8-r5.
-(1) The routing counted every turn before the run detection scanned the array again, one
-extra comparison per element on presorted input; 8-r3 estimates the turn density from 64
-windows of 256 pairs when $n\ge 2^{16}$. (2) All extra moves came from rotations in merges
-whose runs both exceed the buffer: 3.75--4.30 moves per element at $n\approx 10^6$, against
-0.71--0.75 with $n/2$ memory. 8-r4 replaces them by a page merge: the range is cut into pages
-of $B/8$ elements, the buffer supplies 8 spare pages, output pages go to any free page and a
-final cycle-following pass puts them in order. (3) Merges that fit in the buffer still cost
-about 1.5 moves per element; 8-r5 adopts the scheme of \cite{vmpowersort} in the natural-run
-path when the buffer is at most $n/8$ and the first 17 detected runs average at least 32
-elements: runs are copied to pages on detection, merged page to page, and moved back once.
-Both the page merge and the paged runs are the authors' idea; what SotSort adds around them is
-its run detection, the quicksort for near-random input, and the choice between paths. All
-three changes only select or reorganise stable merges, so correctness rests on the same
-arguments; the test suite (about 13\,500 differential cases, sanitizers, and a memory-peak test) passes.
-A last problem was code generation: with gcc \texttt{-O2} the larger functions had left the
-comparator or the insertion loop out of line, which cost up to 30\% with expensive
-comparisons; it was found because operation counts were identical while times were not.
-
-\begin{table}[t]\centering\small
-\begin{tabular}{@{}lrrrrrr@{}}\toprule
-$S$ & 2 & 100 & 1000 & $10^4$ & $10^5$ & $10^6$\\\midrule
-time, SotSort / VM-Powersort, cloud & 1.09 & 0.97 & 0.96 & 0.97 & 1.04 & 1.07\\
-time, SotSort / VM-Powersort, PC & 1.09 & 0.95 & 0.93 & 0.93 & 0.95 & 0.99\\
-comparisons per element, VM-Powersort & 26.80 & 17.26 & 13.58 & 10.52 & 7.24 & 3.98\\
-comparisons per element, SotSort & 22.30 & 16.93 & 13.58 & 10.52 & 7.24 & 3.98\\
-moves per element, VM-Powersort & 30.71 & 19.37 & 15.55 & 12.50 & 9.22 & 5.96\\
-moves per element, SotSort & 49.58 & 18.69 & 15.31 & 12.27 & 8.99 & 5.96\\\bottomrule
-\end{tabular}
-\caption{Version 8-r5, \texttt{int}, same memory, $n$ uniform in $[0.9\cdot10^7, 10^7]$
-(per-element counts divided by $0.95\cdot10^7$), 10 runs for time on each machine, 3 for counts (counts are the same on both).
-``Moves'' counts assignments and copy/move constructions.}\label{tab:vm7}
-\end{table}
+inputs. Counting operations located four causes. (1) The routing counted every turn before the
+run detection scanned the array again; 8-r3 estimates the turn density from 64 windows of 256
+pairs when $n\ge 2^{16}$. (2) Merges whose runs both exceed the buffer used rotations (3.75--4.30
+moves per element at $n\approx 10^6$); 8-r4 replaces them by a page merge with output pages taken
+from any free page and a final cycle-following pass. (3) Merges that fit in the buffer still
+cost about 1.5 moves per element; 8-r5 adopts the paged runs of \cite{vmpowersort} in the
+natural-run path. Both are the authors' ideas. (4) On near-random input the quicksort itself
+was the cost: measured with a counting type and this budget, one stable partition costs
+$1.5+c\lg(m/B)$ moves per element with $c\approx0.56$--$0.75$, and partitions made 33 of the 40
+moves per element at $n=10^6$. Making each partition cheaper (a 2-way paged partition, 3.5
+moves per element for any $B$) only reached 35.4; the number of levels had to fall, which is what
+the paged samplesort of 8-r6 does. Correctness: every change only selects or reorganises stable
+procedures; the test suite (about 13\,500 differential cases, a memory-peak test, a test of the
+new path with 112-byte records and strings, and sanitizers) passes. Code generation also
+mattered: with gcc \texttt{-O2} some loops were left with an out-of-line comparator, which cost
+up to 30\% in time with identical operation counts.
 
 \begin{table}[t]\centering\small
 \begin{tabular}{@{}llrrrrrr@{}}\toprule
-machine & type & $S=2$ & 100 & 1000 & $10^4$ & $10^5$ & $10^6$\\\midrule
-cloud & \texttt{int}     & 1.01 & 0.88 & 0.88 & 0.89 & 1.00 & 0.78\\
-cloud & \texttt{ptr}     & 1.05 & 0.79 & 0.82 & 0.80 & 0.93 & 0.97\\
-cloud & \texttt{fastarr} & 1.10 & 0.79 & 0.89 & 0.88 & 0.90 & 0.57\\
-cloud & \texttt{arr}     & 0.80 & 0.84 & 0.85 & 0.96 & 0.94 & 0.77\\
-PC & \texttt{int}     & 0.99 & 0.91 & 0.89 & 0.83 & 0.98 & 0.72\\
-PC & \texttt{ptr}     & 1.17 & 0.68 & 0.63 & 0.71 & 0.92 & 0.85\\
-PC & \texttt{fastarr} & 0.97 & 0.84 & 0.84 & 0.87 & 0.89 & 0.52\\
-PC & \texttt{arr}     & 0.67 & 0.79 & 0.84 & 0.82 & 0.66 & 0.58\\\bottomrule
+type & & $S=2$ & 100 & 1000 & $10^4$ & $10^5$ & $10^6$\\\midrule
+\texttt{int} & cmp, VM-PS & 27.76 & 15.44 & 10.29 & 6.94 & 3.85 & 2.03\\
+ & cmp, SotSort & 18.96 & 13.76 & 10.28 & 6.96 & 3.71 & 2.04\\
+ & moves, VM-PS & 31.65 & 17.71 & 12.24 & 8.89 & 5.83 & 4.04\\
+ & moves, SotSort & 22.10 & 15.43 & 11.90 & 8.58 & 5.49 & 2.08\\\midrule
+\texttt{fastarr} & cmp, VM-PS & 28.09 & 15.87 & 10.53 & 7.21 & 4.02 & 2.09\\
+ & cmp, SotSort & 19.10 & 14.04 & 10.51 & 7.23 & 4.03 & 2.11\\
+ & moves, VM-PS & 32.01 & 18.17 & 12.51 & 9.19 & 6.02 & 4.07\\
+ & moves, SotSort & 17.39 & 15.89 & 12.29 & 9.01 & 6.01 & 2.21\\\bottomrule
 \end{tabular}
-\caption{Version 8-r5, time SotSort / Virtual-Memory Powersort with the same memory,
-$n\approx10^6$, 10 runs. Cloud: the 2-vCPU VM of Section~\ref{sec:exp}; PC: a 2-vCPU Linux VM
-on an Intel Core Ultra 7 155H, gcc 11.4. Same source on both.}\label{tab:vm6}
+\caption{Version 8-r6, comparisons and moves per element with the same memory as
+Virtual-Memory Powersort, $n$ uniform in $[0.9\cdot10^6, 10^6]$, counts divided by $0.95\cdot10^6$,
+2 runs. ``Moves'' counts assignments and copy/move constructions. The counting wrapper exists
+for \texttt{int} and \texttt{fastarr} only.}\label{tab:vmcount}
 \end{table}
 
-\paragraph{Results.} At $n\approx10^6$ (Table~\ref{tab:vm6}) the ratio is below 1.00 in 43 of
-48 cells, down to 0.52 for slow moves with long runs. At $n=10^7$ on integers
-(Table~\ref{tab:vm7}) SotSort is 1--7\% faster on the PC for $S\ge100$; on the cloud VM it is
-3--4\% faster for $S$ from 100 to $10^4$ and 4--7\% slower for $S=10^5$ and $10^6$, where its
-operation counts are equal or lower. Since that loss does not appear on the second machine I
-read it as a property of that VM rather than of the algorithm, without being able to show why
-(no hardware counters). On both machines SotSort is 9\% slower at $S=2$. The weak spot is near-random input ($S=2$): SotSort's quicksort makes
-17--32\% fewer comparisons but many more moves (49.58 against 30.71 per element at $n=10^7$,
-since with this budget its partition blocks are small), so it loses when moves or comparisons
-are not both cheap: \texttt{ptr} 1.05 and 1.17, cloud \texttt{fastarr} 1.10. With $n/2$
-memory against CPython-style Powersort SotSort is still 1--11\% slower on \texttt{int} at
-$n=10^7$ on the cloud VM (6--9\% on the PC) and up to 1.56 times slower on \texttt{ptr} at $n=10^6$; that comparison was not the
-target of these changes. Repeated runs of identical code moved ratios by up to about 10\%, so
-smaller differences are ties.
+\paragraph{Results.} Table~\ref{tab:vmcount} gives the counts. With the same memory, SotSort makes
+no more comparisons than Virtual-Memory Powersort in any cell up to $+0.02$ per element, and
+fewer moves in every cell; the largest differences are at $S=2$ (30--46\% fewer moves, 32\% fewer
+comparisons) and $S=10^6$. At $n\approx10^7$ (\texttt{int}, $S=2$, one run) it makes 21.87
+comparisons and 23.50 moves per element against 26.07 and 29.90. With $n/2$ memory against
+CPython-style Powersort it makes fewer comparisons and moves at $S=2$ (18.96 and 22.11 against
+27.76 and 35.52 for \texttt{int}) but more moves for $S\ge1000$ (e.g.\ 13.96 against 13.54 at
+$S=1000$, 1.73 against 1.45 at $S=10^6$). Times, as an indication only (cloud VM, one session,
+$n\approx10^6$, 10 runs; SotSort over Virtual-Memory Powersort for $S=2$, 100 and $10^6$):
+\texttt{int} 1.02, 0.98, 0.83; \texttt{ptr} 0.88, 0.72, 0.98; \texttt{fastarr} 0.89, 0.86, 0.56;
+\texttt{arr} 0.59, 0.88, 0.81. Repeated runs of identical code moved time ratios by up to about
+10\%, so I do not read small time differences as results.
+
+\paragraph{Worst case.} McIlroy's adaptive adversary, run against the samplesort with its fixed
+seed and the same budget, first produced 95 comparisons and 123 moves per element at $n=10^6$.
+The bad-pass rule above and the smaller quicksort budget bring it to 26.1 and 34.1 (and the
+adversary built against the quicksort path, from 30.1 and 95.6 to 14.2 and 29.3). The input the
+adversary builds depends on the seed: with another seed the same input costs 17.4 and 17.7.
+SotSort accepts a per-call seed. Virtual-Memory Powersort, as a mergesort, has no such weakness.
 
 \paragraph{An observation about the baselines.} My absolute times for Virtual-Memory
 Powersort are close to those the authors report for an i7-4770 in the data published with the
@@ -287,22 +306,27 @@ than Virtual-Memory Powersort; on my two machines, at $n=10^7$,
 the two are within about 5\%. I have not found the cause. Candidates are the processor
 (their i7-4770 against a recent Xeon and a Core Ultra 7, both behind a hypervisor), the
 compiler version, and differences between their published runs and the \texttt{assignment-fix}
-branch I used. This matters for reading Table~\ref{tab:vm6}: the comparison here is against
+branch I used. This matters for reading the time ratios above: the comparison here is against
 Virtual-Memory Powersort as it runs on these machines.
 
 \section{Limitations}
-For Section~\ref{sec:exp}, one machine, virtualised and shared, with two cores (Section~\ref{sec:vmps}
-adds a second virtual machine, still no bare metal); no hardware counters; no ARM; no strings in
-the comparison tables; the competitors were built with their default settings; glidesort and
-driftsort cross a C-to-Rust call boundary once per sort. The comparison against blitsort uses
-its default 512-element buffer, while SotSort's buffer is 16\,KB (2048 64-bit elements): both
-are constant, but they are not equal. The thresholds
-of the routing probes were tuned on this one machine, on some of the same inputs used for the
-comparison, so the structured-input rows are optimistic.
+For Section~\ref{sec:exp}, one machine, virtualised and shared, with two cores; no hardware
+counters; no ARM; no strings in the comparison tables; the competitors were built with their
+default settings; glidesort and driftsort cross a C-to-Rust call boundary once per sort. The
+comparison against blitsort uses its default 512-element buffer, while SotSort's buffer is 16\,KB
+(2048 64-bit elements): both are constant, but they are not equal. The thresholds of the routing
+probes were tuned on this one machine, on some of the same inputs used for the comparison, so the
+structured-input rows are optimistic. Logsort, the closest in-place stable quicksort, is not in
+the comparison. The paged samplesort is only used with a bounded block buffer: in constant-memory
+mode its tables would exceed the memory and the quicksort runs instead. Its worst case is
+measured against one adversary, not proved tight. The comparison with Virtual-Memory Powersort
+covers its harness, its two counting types and its run distribution only.
 
 \section{Availability}\label{sec:avail}
 Code, tests, the benchmark harness and raw measurements: \url{https://github.com/sotomayorlucas/sotsort},
-code at commit \texttt{c16d43f} for version 8-r and \texttt{b9e0df1} for version 8-r5 (MPL-2.0).
+code at commit \texttt{c16d43f} for version 8-r, \texttt{b9e0df1} for version 8-r5 and
+\texttt{9b8b554} for version 8-r6 (MPL-2.0). Notes on the paged partition and samplesort
+(cost model, proof sketch, tests, prior art; in Spanish): \texttt{docs/IDEA\_particion\_paginada.md}.
 The Virtual-Memory Powersort comparison is in \texttt{bench/vmpowersort}: a patch to their
 harness, the scripts and the raw results; their code is not redistributed.
 \begin{thebibliography}{9}\small
@@ -314,5 +338,11 @@ harness, the scripts and the raw results; their code is not redistributed.
   sorts. In \emph{ICALP 2022}, LIPIcs 229, article 68, 2022.
 \bibitem{blockqs} S.~Edelkamp, A.~Weiß. BlockQuicksort: avoiding branch mispredictions in
   Quicksort. In \emph{ESA 2016}, LIPIcs, article 38, 2016.
+\bibitem{radsort} R.~Clausecker, F.~Schintke. Parallel $O(\sqrt n)$ overhead LSD radix sort.
+  arXiv:2607.05302, 2026.
+\bibitem{logsort} aphitorite. Logsort: an in-place stable $O(n\log n)$ quicksort.
+  \url{https://github.com/aphitorite/Logsort} (accessed 19 November 2026).
+\bibitem{ips4o} M.~Axtmann, S.~Witt, D.~Ferizovic, P.~Sanders. In-place parallel super scalar
+  samplesort (IPS$^4$o). In \emph{ESA 2017}, LIPIcs 87, 9:1--9:14, 2017.
 \end{thebibliography}
 \end{document}
