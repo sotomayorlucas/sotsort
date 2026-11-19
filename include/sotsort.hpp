@@ -1383,9 +1383,20 @@ Plan make_plan(std::size_t n, const Options& o) {
         pl.budget = std::min(pl.budget, cap);
     }
     if (n <= B0) return pl;
-    if (n <= pl.budget / s) { pl.mode = Plan::Full; pl.E = n; }
+    // v8-r5: el presupuesto cubre todo lo que se reserva: el buffer redondeado como lo reserva
+    // Aux (64 bytes, o 2 MB desde 4 MB), el buffer propio del Sorter (B0 elementos) y, en modo
+    // bloques, las tablas de páginas (a lo sumo 1/8 del buffer más 4 KB; ver page_ok y paged_ok).
+    auto fits = [&](std::size_t E, bool tables) {
+        if (E > (static_cast<std::size_t>(-1) >> 2) / s) return false;
+        std::size_t bytes = E * s, al = bytes >= (std::size_t(4) << 20) ? (std::size_t(2) << 20) : 64;
+        bytes = (bytes + al - 1) / al * al;
+        std::size_t need = bytes + B0 * s + (tables ? E * s / 8 + 4096 : 0);
+        return need <= pl.budget;
+    };
+    if (fits(n, false)) { pl.mode = Plan::Full; pl.E = n; }
     else {
         std::size_t b = pl.budget / s, E = detail::bit_floor(b);
+        while (E > B0 && !fits(E, true)) E >>= 1;
         if (E > B0 && b >= 2 * B0) { pl.mode = Plan::Block; pl.E = E; }
     }
     if (pl.mode == Plan::Full && o.threads != 1) {
