@@ -255,3 +255,19 @@ CPython-style Powersort (`summary.txt`, last column) SotSort still loses on slow
 (`ptr` 1.11–1.56) and wins or ties on slow moves; that comparison was not the target here.
 Both machines are 2-vCPU VMs; the same build was measured on both; cells within about ±10%
 should still be read as ties.
+
+## Update 5 — v8-r5 at n = 10^7 (int, cloud VM)
+
+`cells_1e7.sh`, binary with v8-r5 (b9e0df1), maxn = 10^7, 10 runs for time and 3 for counts; raw output in `results-1e7-r5/`.
+Per-element counts divided by 0.95·10^7.
+
+| S | sotvm / almost | sothalf / copy | cmp VM-PS / Sot | moves VM-PS / Sot |
+|---|---|---|---|---|
+| 2 | 1.09 | 1.11 | 26.80 / 22.30 | 30.71 / 49.58 |
+| 100 | 0.97 | 1.10 | 17.26 / 16.93 | 19.37 / 18.69 |
+| 1000 | 0.96 | 1.07 | 13.58 / 13.58 | 15.55 / 15.31 |
+| 10^4 | 0.97 | 1.05 | 10.52 / 10.52 | 12.50 / 12.27 |
+| 10^5 | 1.04 | 1.07 | 7.24 / 7.24 | 9.22 / 8.99 |
+| 10^6 | 1.07 | 1.01 | 3.98 / 3.98 | 5.96 / 5.96 |
+
+At 10^6 and 10^5 operation counts are equal or lower for SotSort while time is 4–7% higher; the cause is not identified (single machine, no hardware counters). copy/almost here ranges 0.95–1.05.
