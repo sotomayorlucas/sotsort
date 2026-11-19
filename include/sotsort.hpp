@@ -1347,7 +1347,17 @@ private:
         const std::size_t ns = std::min<std::size_t>(m, 8 * k);
         for (std::size_t i = 0; i < ns; ++i) buf_[i] = a_[lo + static_cast<std::size_t>(rnd() % m)];
         std::sort(buf_, buf_ + ns, [&](const T& x, const T& y) { return lt(x, y); });
-        for (std::size_t j = 1; j < k; ++j) spl[j - 1] = buf_[j * ns / k];
+        // Árbol implícito (como en IPS4o): nodo i en spl[i-1], hijos 2i y 2i+1; el recorrido en
+        // orden de los nodos 1..k-1 da los separadores ordenados. Clasificar es bajar log2 k
+        // niveles con b = 2b + (separador <= x), sin saltos que dependan de los datos.
+        { std::size_t j = 1;
+          auto fill_tree = [&](auto&& self, std::size_t i) -> void {
+              if (i >= k) return;
+              self(self, 2 * i);
+              spl[i - 1] = buf_[j * ns / k]; ++j;
+              self(self, 2 * i + 1);
+          };
+          fill_tree(fill_tree, 1); }
         std::size_t start[65];
         pss_distribute(lo, m, spl, start);
         std::size_t big = 0;
@@ -1369,9 +1379,9 @@ private:
         std::size_t fill[64] = {0}, full[64] = {0};
         std::size_t w = 0;
         for (std::size_t r = 0; r < m; ++r) {
-            std::size_t l0 = 0, h0 = k - 1;                   // grupo = upper_bound en los separadores
-            while (l0 < h0) { std::size_t md = (l0 + h0) / 2; if (lt(a[r], spl[md])) h0 = md; else l0 = md + 1; }
-            const std::size_t g = l0;
+            std::size_t b = 1;                                  // grupo = separadores <= x
+            for (std::size_t lv = k; lv > 1; lv >>= 1) b = 2 * b + static_cast<std::size_t>(!lt(a[r], spl[b - 1]));
+            const std::size_t g = b - k;
             buf[g * P + fill[g]++] = std::move(a[r]);
             if (fill[g] == P) {                                 // volcar en la ranura w (ya leída)
                 std::move(buf + g * P, buf + (g + 1) * P, a + w * P);

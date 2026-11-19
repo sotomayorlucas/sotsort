@@ -327,3 +327,20 @@ sotvm / VM-PS for S = 2, 100, 10^6: int 1.12, 0.96, 0.78; ptr 0.78, 0.63, 0.93; 
 On this machine int at S = 2 is 12% slower in time despite 30% fewer moves and 32% fewer comparisons: with cheap
 elements the branchy binary-search classification (one unpredictable branch per level of the search) likely dominates;
 IPS4o uses a branchless decision tree for this. Not measured with hardware counters.
+
+## Update 8 — branchless classification in the paged samplesort
+
+The group of each element is now found by descending an implicit splitter tree (`b = 2b + (splitter <= x)`, as in IPS4o's
+decision tree) instead of a binary search with data-dependent branches. Comparison and move counts are unchanged
+(k is a power of two). Time ratio to VM-PS at S = 2, n ≈ 10^6, 10 runs, A/B in the same binary with both orders
+(`sot6vm` = previous binary search, `sotvm` = tree; `results-bl/`, `results-pc-bl/`, `ab_branchless.sh`):
+
+| type | cloud, before → after | PC, before → after |
+|---|---|---|
+| int | 1.01 → 0.72 | 1.11 → 0.78 |
+| ptr | 0.88 → 0.82 | 0.90 → 0.86 |
+| fastarr | 0.89 → 0.73 | 0.95 → 0.73 |
+| arr | 0.64 → 0.55 | 0.52 → 0.57 |
+
+This supports (does not prove; no hardware counters) the branch-misprediction explanation of Update 7. arr on the PC is the
+one cell that got slower (5 points).

@@ -326,6 +326,15 @@ termina antes por dos pasadas malas seguidas). El caso base es el quicksort con 
 buffer). Total O(n log n) comparaciones y movimientos en el peor caso; las constantes del
 peor caso medido con el adversario de McIlroy están en §2g–2h. No es una cota ajustada.
 
+## 2j. Clasificación sin saltos
+
+La búsqueda binaria entre separadores tenía un salto impredecible por nivel. Ahora los
+separadores forman un árbol implícito (nodo i, hijos 2i y 2i+1, recorrido en orden = orden)
+y el grupo se obtiene con b = 2b + (separador ≤ x) durante log2 k pasos, como el árbol de
+decisión de IPS4o. Mismos conteos (k es potencia de 2). Tiempo respecto de VM-Powersort con
+S = 2, A/B en el mismo binario, nube / PC: int 1.01 → 0.72 / 1.11 → 0.78; ptr 0.88 → 0.82 /
+0.90 → 0.86; fastarr 0.89 → 0.73 / 0.95 → 0.73; arr 0.64 → 0.55 / 0.52 → 0.57.
+
 ## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
 
 **Antecedente directo: Radsort** (Clausecker y Schintke, "Parallel O(√n) Overhead LSD Radix
