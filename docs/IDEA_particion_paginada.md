@@ -306,6 +306,26 @@ para entradas legítimas con muchas particiones desparejas, que no medí. La sui
 pasa (differential, extra, OOO, memoria, ASan+UBSan) y los conteos del harness no cambian.
 La garantía O(n log n) no cambia: el respaldo es el mismo, solo llega antes.
 
+## 2i. Integración en SotSort (v8-r6)
+
+`Sorter::pss_sort` en `include/sotsort.hpp`: camino de entrada casi aleatoria en modo
+bloques (buffer B con 2B < n). k ∈ {64, 32, 16, 8}, el mayor con páginas P = ⌊(B−k+1)/k⌋ ≥ 64
+y tablas (6 bytes por ranura) dentro de la reserva de tablas del plan (B·s/8 + 4 KB), que ya
+se descontaba del presupuesto. Separadores en las últimas k−1 posiciones del buffer; la muestra
+se ordena en el área de páginas. Caso base: el quicksort con tope de 4 particiones malas.
+La regla de elementos grandes (≥ 64 bytes → mezcla) solo se aplica si este camino no está
+disponible. La partición estable de 2 vías por páginas (`SOT_PAGED_PART`) se retiró del
+encabezado: el samplesort la reemplaza; el prototipo queda en `bench/cost/`.
+Tests: suite completa + `tests/test_pss.cpp` (tipos de 112 bytes y `std::string`, presupuestos
+de 200 KB a 4 MB, claves aleatorias, 3 y 1000 valores) + ASan/UBSan/TSan.
+
+**Cota de peor caso (movimientos).** Cada pasada cuesta ≤ 4.5m + O(kP) movimientos y
+m⌈log2 k⌉ comparaciones; un camino de la recursión hace a lo sumo 2·log_k n + 2 pasadas (o
+termina antes por dos pasadas malas seguidas). El caso base es el quicksort con a lo sumo
+4 particiones malas por camino antes del respaldo por mezclas (O(n log n) movimientos con
+buffer). Total O(n log n) comparaciones y movimientos en el peor caso; las constantes del
+peor caso medido con el adversario de McIlroy están en §2g–2h. No es una cota ajustada.
+
 ## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
 
 **Antecedente directo: Radsort** (Clausecker y Schintke, "Parallel O(√n) Overhead LSD Radix

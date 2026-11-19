@@ -257,6 +257,9 @@ public:
 #ifndef SOT_MERGE_BYTES
 #define SOT_MERGE_BYTES 64
 #endif
+#ifndef SOT_BAD_BUDGET
+#define SOT_BAD_BUDGET 4            // particiones malas toleradas por el quicksort (ver quick)
+#endif
 #ifndef SOT_LEAF
 #define SOT_LEAF 128
 #endif
@@ -353,6 +356,9 @@ public:
             return;
         }
         adaptive_ = false;
+#ifndef SOT_NO_PAGED_SAMPLE
+        if (pss_sort(n)) return;
+#endif
         quick(n);
     }
 
@@ -397,8 +403,15 @@ private:
         // buffer alcanza para la mezcla por páginas, las mezclas (~1,5 movimientos por elemento y
         // nivel) le ganan al quicksort (dos escrituras por elemento y nivel, más rotaciones),
         // también con entrada aleatoria. Medido en una sola máquina; SOT_MERGE_BYTES=0 lo apaga.
+        // v8-r6: si el samplesort por páginas está disponible, cuesta ~4 movimientos por pasada de
+        // k = 64 vías (≈ 0.7 por nivel binario) y le gana también a la mezcla: la regla solo
+        // queda para cuando no lo está.
         if constexpr (SOT_MERGE_BYTES > 0 && sizeof(T) >= SOT_MERGE_BYTES) {
+#ifndef SOT_NO_PAGED_SAMPLE
+            if (page_ok(n) && !pss_ways(n)) return true;
+#else
             if (page_ok(n)) return true;
+#endif
         }
 #ifndef SOT_EXACT_TURNS
         // v8-r3: con n grande, la densidad de giros se estima con 64 ventanas de 256 pares
@@ -1271,6 +1284,131 @@ private:
         while (top > 1) merge_top();
     }
 
+    // ---------------------------------- samplesort estable por páginas (v8-r6)
+    // Camino de entrada casi aleatoria en modo bloques (buffer B < n). Una pasada reparte el
+    // rango en k grupos: cada elemento va a la página de salida de su grupo (k páginas de P en
+    // el buffer); una página llena se vuelca en la primera página del rango ya leída y se anota
+    // su grupo. Como se vuelca siempre en la siguiente ranura, el índice de ranura es el orden de
+    // volcado, y eso hace estable la pasada. Después: las parciales al espacio libre del final,
+    // permutación de ranuras por grupo (por ciclos) y corrimiento para intercalar las parciales.
+    // Mecanismo de reutilización de bloques: Radsort (Clausecker y Schintke, 2026), para radix
+    // LSD. Acá: comparaciones con separadores muestreados, MSD con grupos contiguos por pasada.
+    // Demostración y conteos: docs/IDEA_particion_paginada.md (§2d–2h).
+    // Memoria: páginas y separadores dentro del buffer; tablas de 6 bytes por ranura dentro de la
+    // reserva de tablas del plan (E·s/8 + 4096). Ver pss_ways.
+    std::unique_ptr<std::uint16_t[]> pss_grp_;
+    std::unique_ptr<std::uint32_t[]> pss_src_;
+    std::size_t pss_k_ = 0, pss_P_ = 0;
+    int pss_maxdepth_ = 0;
+
+    // Elige k (potencia de 2, 8..64) con páginas de >= 64 y tablas dentro de la reserva.
+    // Devuelve 0 si no hay combinación válida.
+    std::size_t pss_ways(std::size_t n) const {
+        if (buf_ == own_ || aux_base_ || n <= 2 * B_) return 0;
+        const std::size_t reserve = B_ * sizeof(T) / 8 + 4096;
+        for (std::size_t k = 64; k >= 8; k /= 2) {
+            std::size_t P = (B_ - (k - 1)) / k;
+            if (P < 64) continue;
+            std::size_t slots = n / P + 2;
+            if (slots > 0xFFFFFFFFull) continue;
+            if (slots * (sizeof(std::uint16_t) + sizeof(std::uint32_t)) <= reserve) return k;
+        }
+        return 0;
+    }
+    bool pss_sort(std::size_t n) {
+        const std::size_t k = pss_ways(n);
+        if (!k) return false;
+        pss_k_ = k;
+        pss_P_ = (B_ - (k - 1)) / k;
+        const std::size_t slots = n / pss_P_ + 2;
+        pss_grp_.reset(new (std::nothrow) std::uint16_t[slots]);
+        pss_src_.reset(new (std::nothrow) std::uint32_t[slots]);
+        if (!pss_grp_ || !pss_src_) { pss_grp_.reset(); pss_src_.reset(); return false; }
+        int lk = 0, ln = 0;
+        for (std::size_t x = k; x > 1; x >>= 1) ++lk;
+        for (std::size_t x = n; x > 1; x >>= 1) ++ln;
+        pss_maxdepth_ = 2 * (ln + lk - 1) / lk + 2;
+        pss_rec(0, n, 0, 0);
+        pss_grp_.reset(); pss_src_.reset();
+        return true;
+    }
+    void pss_base(std::size_t lo, std::size_t hi) {
+        int budget = 0;
+        for (std::size_t x = hi - lo; x; x >>= 1) ++budget;
+        if (budget > SOT_BAD_BUDGET) budget = SOT_BAD_BUDGET;
+        quick_from(lo, hi, budget, false, T{}, nullptr, 0);
+    }
+    void pss_rec(std::size_t lo, std::size_t hi, int depth, int bad) {
+        const std::size_t m = hi - lo, k = pss_k_;
+        if (m <= B_ || depth > pss_maxdepth_ || bad > 1) { pss_base(lo, hi); return; }
+        // Separadores: muestra de 8k ordenada en el área de páginas; los k-1 separadores van
+        // al final del buffer (fuera de las páginas).
+        T* spl = buf_ + k * pss_P_;
+        const std::size_t ns = std::min<std::size_t>(m, 8 * k);
+        for (std::size_t i = 0; i < ns; ++i) buf_[i] = a_[lo + static_cast<std::size_t>(rnd() % m)];
+        std::sort(buf_, buf_ + ns, [&](const T& x, const T& y) { return lt(x, y); });
+        for (std::size_t j = 1; j < k; ++j) spl[j - 1] = buf_[j * ns / k];
+        std::size_t start[65];
+        pss_distribute(lo, m, spl, start);
+        std::size_t big = 0;
+        for (std::size_t j = 0; j < k; ++j) big = std::max(big, start[j + 1] - start[j]);
+        // Pasada mala: el grupo más grande supera m/2; dos seguidas en un camino -> caso base.
+        const int nbad = big > m / 2 ? bad + 1 : 0;
+        for (std::size_t j = 0; j < k; ++j) {
+            const std::size_t len = start[j + 1] - start[j];
+            if (len == m) { pss_base(lo, hi); return; }          // sin progreso (muchos iguales)
+            if (len > 1) pss_rec(lo + start[j], lo + start[j + 1], depth + 1, len > m / 2 ? nbad : 0);
+        }
+    }
+    void pss_distribute(std::size_t lo, std::size_t m, const T* spl, std::size_t* start) {
+        const std::size_t k = pss_k_, P = pss_P_;
+        T* a = a_ + lo;
+        T* buf = buf_;
+        std::uint16_t* grp = pss_grp_.get();
+        std::uint32_t* src = pss_src_.get();
+        std::size_t fill[64] = {0}, full[64] = {0};
+        std::size_t w = 0;
+        for (std::size_t r = 0; r < m; ++r) {
+            std::size_t l0 = 0, h0 = k - 1;                   // grupo = upper_bound en los separadores
+            while (l0 < h0) { std::size_t md = (l0 + h0) / 2; if (lt(a[r], spl[md])) h0 = md; else l0 = md + 1; }
+            const std::size_t g = l0;
+            buf[g * P + fill[g]++] = std::move(a[r]);
+            if (fill[g] == P) {                                 // volcar en la ranura w (ya leída)
+                std::move(buf + g * P, buf + (g + 1) * P, a + w * P);
+                grp[w] = static_cast<std::uint16_t>(g); ++full[g]; ++w; fill[g] = 0;
+            }
+        }
+        std::size_t pos = w * P;                                // fase 1: parciales al final
+        for (std::size_t g = 0; g < k; ++g) { std::move(buf + g * P, buf + g * P + fill[g], a + pos); pos += fill[g]; }
+        std::size_t F[65]; F[0] = 0;                            // fase 2: ranuras por grupo
+        for (std::size_t g = 0; g < k; ++g) F[g + 1] = F[g] + full[g];
+        { std::size_t nxt[64]; for (std::size_t g = 0; g < k; ++g) nxt[g] = F[g];
+          for (std::size_t i = 0; i < w; ++i) src[nxt[grp[i]]++] = static_cast<std::uint32_t>(i); }
+        for (std::size_t i = 0; i < w; ++i) {                   // grp se reusa como marca (0xFFFF)
+            if (grp[i] == 0xFFFF) continue;
+            if (src[i] == i) { grp[i] = 0xFFFF; continue; }
+            std::move(a + i * P, a + (i + 1) * P, buf);
+            std::size_t hole = i;
+            for (;;) {
+                grp[hole] = 0xFFFF;
+                const std::size_t s2 = src[hole];
+                if (s2 == i) { std::move(buf, buf + P, a + hole * P); break; }
+                std::move(a + s2 * P, a + (s2 + 1) * P, a + hole * P);
+                hole = s2;
+            }
+        }
+        std::size_t tot = 0, D[65]; D[0] = 0;                   // fase 3: intercalar parciales
+        for (std::size_t g = 0; g < k; ++g) { tot += fill[g]; D[g + 1] = D[g] + fill[g]; }
+        std::move(a + w * P, a + w * P + tot, buf);
+        for (std::size_t g = k; g-- > 0;) {
+            const std::size_t s0 = F[g] * P, e = F[g + 1] * P, d = D[g];
+            std::move(buf + D[g], buf + D[g + 1], a + e + d);
+            if (d && e > s0) std::move_backward(a + s0, a + e, a + e + d);
+            start[g] = s0 + d;
+        }
+        start[k] = m;
+    }
+
     // -------------------------------------------- partición estable
     // Bloque (hi - lo <= B): [x cumple | x no cumple], estable. Predicado:
     // x < piv (le = false) o x <= piv (le = true).
@@ -1308,73 +1446,8 @@ private:
     std::size_t part_block(std::size_t lo, std::size_t hi, const T& piv, bool le) {
         return part_block_to(lo, hi, piv, le, buf_, true);
     }
-#ifdef SOT_PAGED_PART
-    // Partición estable por páginas (experimental, docs/IDEA_particion_paginada.md).
-    // Páginas de P = B/2; ≤ 4.5 movimientos por elemento para cualquier B. Las tablas de bits
-    // (O(m/P)) se piden al heap: todavía no entran en el presupuesto de memoria.
-    std::size_t paged_partition(std::size_t lo, std::size_t hi, const T& piv, bool le) {
-        T* a = a_ + lo;
-        const std::size_t m = hi - lo, P = B_ / 2;
-        T* LB = buf_; T* RB = buf_ + P;
-        std::size_t nl = 0, nr = 0, w = 0;
-        const std::size_t words = m / P / 64 + 2;
-        std::unique_ptr<std::uint64_t[]> side(new std::uint64_t[words]()), done(new std::uint64_t[words]());
-        std::unique_ptr<std::size_t[]> pre(new std::size_t[words + 1]);
-        for (std::size_t r = 0; r < m; ++r) {
-            bool left = le ? !lt(piv, a[r]) : lt(a[r], piv);
-            if (left) {
-                LB[nl++] = std::move(a[r]);
-                if (nl == P) { std::move(LB, LB + P, a + w * P); ++w; nl = 0; }
-            } else {
-                RB[nr++] = std::move(a[r]);
-                if (nr == P) { std::move(RB, RB + P, a + w * P); side[w / 64] |= 1ull << (w % 64); ++w; nr = 0; }
-            }
-        }
-        std::move(LB, LB + nl, a + w * P);
-        std::move(RB, RB + nr, a + w * P + nl);
-        pre[0] = 0;
-        for (std::size_t j = 0; j < words; ++j) pre[j + 1] = pre[j] + static_cast<std::size_t>(__builtin_popcountll(side[j]));
-        auto rights_before = [&](std::size_t i) {
-            std::uint64_t mask = (i % 64) ? (side[i / 64] & ((1ull << (i % 64)) - 1)) : 0;
-            return pre[i / 64] + static_cast<std::size_t>(__builtin_popcountll(mask));
-        };
-        const std::size_t b = rights_before(w), aL = w - b;
-        auto select = [&](std::size_t k, bool right) {
-            std::size_t l0 = 0, h0 = words;
-            auto cnt = [&](std::size_t j) { return right ? pre[j] : j * 64 - pre[j]; };
-            while (h0 - l0 > 1) { std::size_t md = (l0 + h0) / 2; if (cnt(md) <= k) l0 = md; else h0 = md; }
-            std::size_t r = k - cnt(l0);
-            std::uint64_t word = right ? side[l0] : ~side[l0];
-            for (;;) { std::size_t z = static_cast<std::size_t>(__builtin_ctzll(word)); if (!r) return l0 * 64 + z; word &= word - 1; --r; }
-        };
-        auto src = [&](std::size_t j) { return j < aL ? select(j, false) : select(j - aL, true); };
-        for (std::size_t i = 0; i < w; ++i) {
-            if ((done[i / 64] >> (i % 64)) & 1) continue;
-            if (src(i) == i) { done[i / 64] |= 1ull << (i % 64); continue; }
-            std::move(a + i * P, a + (i + 1) * P, buf_);
-            std::size_t hole = i;
-            for (;;) {
-                done[hole / 64] |= 1ull << (hole % 64);
-                std::size_t s2 = src(hole);
-                if (s2 == i) { std::move(buf_, buf_ + P, a + hole * P); break; }
-                std::move(a + s2 * P, a + (s2 + 1) * P, a + hole * P);
-                hole = s2;
-            }
-        }
-        const std::size_t s0 = aL * P, e = w * P;
-        if (nl && e > s0) {                   // sin parcial izquierda no hay nada que correr (y no autoasignar)
-            std::move(a + e, a + e + nl, buf_);
-            std::move_backward(a + s0, a + e, a + e + nl);
-            std::move(buf_, buf_ + nl, a + s0);
-        }
-        return lo + s0 + nl;
-    }
-#endif
     // Gather en orden de contador binario; el corte de cada segmento viaja en la pila.
     std::size_t stable_partition(std::size_t lo, std::size_t hi, const T& piv, bool le) {
-#ifdef SOT_PAGED_PART
-        if (hi - lo > 8 * B_ && B_ / 2 >= 64) return paged_partition(lo, hi, piv, le);
-#endif
         struct S { std::size_t s, sp; int lvl; } st[70];
         int top = 0;
         const std::size_t B = B_;
@@ -1425,9 +1498,6 @@ private:
     }
 
     // ------------------------------------------------------ quicksort estable
-#ifndef SOT_BAD_BUDGET
-#define SOT_BAD_BUDGET 4
-#endif
     void quick(std::size_t n) {
         int budget = 0;
         for (std::size_t k = n; k; k >>= 1) ++budget;

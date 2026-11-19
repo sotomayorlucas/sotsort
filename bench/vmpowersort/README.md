@@ -293,3 +293,31 @@ Counts per element (n uniform in [0.9·10^6, 10^6], divided by 0.95·10^6), resu
 For S ≥ 100 `sotps` takes SotSort's path; counts equal `sotvm` within 0.02 comparisons per element (the routing probe).
 Time at S = 2, n ≈ 10^6, 10 runs, cloud VM, ratio to VM-PS: int 1.05, ptr 0.84, fastarr 0.96, arr 0.61
 (`sotvm`: 1.08, 1.04, 1.08, 0.71). Single machine, single session: treat as indicative only.
+
+## Update 7 — v8-r6: paged samplesort integrated
+
+`include/sotsort.hpp` now uses the stable paged samplesort for near-random input in block mode (`pss_sort`;
+`SOT_NO_PAGED_SAMPLE` turns it off), and the large-element rule only sends to the merge path when it is not available.
+The quicksort tolerates at most 4 bad partitions (`SOT_BAD_BUDGET`). Harness entries `sotvm`/`sothalf` with the
+current header; counts per element (`results-r6/`, n ≈ 10^6, divided by 0.95·10^6):
+
+| type | S | cmp VM-PS / sotvm | moves VM-PS / sotvm | cmp copy / sothalf | moves copy / sothalf |
+|---|---|---|---|---|---|
+| int | 2 | 27.76 / 18.96 | 31.65 / 22.10 | 27.76 / 18.96 | 35.52 / 22.11 |
+| int | 100 | 15.44 / 13.76 | 17.71 / 15.43 | 15.47 / 14.10 | 20.70 / 19.11 |
+| int | 1000 | 10.29 / 10.28 | 12.24 / 11.90 | 10.29 / 10.44 | 13.54 / 13.96 |
+| int | 10^4 | 6.94 / 6.96 | 8.89 / 8.58 | 6.94 / 7.04 | 8.48 / 8.94 |
+| int | 10^5 | 3.85 / 3.71 | 5.83 / 5.49 | 3.85 / 3.75 | 3.89 / 4.49 |
+| int | 10^6 | 2.03 / 2.04 | 4.04 / 2.08 | 2.03 / 2.07 | 1.45 / 1.73 |
+| fastarr | 2 | 28.09 / 19.10 | 32.01 / 17.39 | 28.09 / 19.12 | 35.90 / 22.32 |
+| fastarr | 100 | 15.87 / 14.04 | 18.17 / 15.89 | 15.88 / 14.39 | 21.23 / 19.50 |
+| fastarr | 1000 | 10.53 / 10.51 | 12.51 / 12.29 | 10.53 / 10.67 | 13.86 / 14.29 |
+| fastarr | 10^4 | 7.21 / 7.23 | 9.19 / 9.01 | 7.21 / 7.31 | 8.89 / 9.36 |
+| fastarr | 10^5 | 4.02 / 4.03 | 6.02 / 6.01 | 4.02 / 4.10 | 4.28 / 4.77 |
+| fastarr | 10^6 | 2.09 / 2.11 | 4.07 / 2.21 | 2.09 / 2.16 | 1.31 / 1.31 |
+
+n ≈ 10^7, int, S = 2 (one run): comparisons 26.07 / 21.87 (VM-PS / sotvm), moves 29.90 / 23.50.
+Against VM-Powersort with the same memory, sotvm now makes no more comparisons or moves in any cell
+(largest excess: +0.02 comparisons). With n/2 memory against copy-Powersort it still makes more moves for S ≥ 1000.
+Indicative times (cloud VM, 10 runs, one session), sotvm / VM-PS: int 1.02, 0.98, 0.83 (S = 2, 100, 10^6);
+ptr 0.88, 0.72, 0.98; fastarr 0.89, 0.86, 0.56; arr 0.59, 0.88, 0.81.
