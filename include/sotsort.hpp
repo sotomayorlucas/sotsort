@@ -1425,9 +1425,17 @@ private:
     }
 
     // ------------------------------------------------------ quicksort estable
+#ifndef SOT_BAD_BUDGET
+#define SOT_BAD_BUDGET 4
+#endif
     void quick(std::size_t n) {
         int budget = 0;
         for (std::size_t k = n; k; k >>= 1) ++budget;
+        // Particiones malas toleradas antes del respaldo por mezclas. Antes era lg n: el adversario
+        // de McIlroy gastaba ~20 particiones malas (~4 movimientos por elemento cada una) antes del
+        // respaldo. Con 4 bajan sus 95.6 movimientos por elemento a 29.3 (n = 10^6); en las
+        // distribuciones de bench/ el presupuesto nunca se agota (conteos idénticos).
+        if (budget > SOT_BAD_BUDGET) budget = SOT_BAD_BUDGET;
         quick_from(0, n, budget, false, T{}, nullptr, 0);
     }
     void quick_from(std::size_t lo0, std::size_t hi0, int bad0, bool has0, const T& lb0, Spawner* spw, std::size_t grain) {

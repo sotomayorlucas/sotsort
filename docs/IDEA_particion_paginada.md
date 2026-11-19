@@ -284,6 +284,28 @@ misma entrada cuesta 17.37 / 17.74 en 10^6. Con semilla secreta por llamada (Sot
 admite en `Options::seed`) el ataque necesita conocerla.
 Los conteos con entrada aleatoria en el harness no cambian (int 18.98 / 22.14).
 
+## 2h. Presupuesto de particiones malas del quicksort de SotSort
+
+El peor caso del 2g venía del quicksort de abajo: toleraba lg n particiones malas (lado
+menor < len/16) antes de pasar a la mezcla de respaldo, y cada una cuesta ~2.5–4
+movimientos por elemento sin achicar el rango. Cambio en `include/sotsort.hpp`: el
+presupuesto pasa a min(lg n, 4) (`SOT_BAD_BUDGET`, por defecto 4).
+
+Movimientos por elemento, n = 10^6, presupuesto de VM-Powersort (`bench/cost/`):
+
+| entrada | presupuesto lg n | 4 | 2 |
+|---|---|---|---|
+| adversario contra SotSort / SotSort | 95.59 | 29.28 | 21.00 |
+| adversario contra el paginado / paginado | 96.70 | 34.06 | 26.23 |
+| aleatoria, dup16, sqrtn, zipf, organ, runs63, tail10, asc1pct, intercalada | sin cambios | sin cambios | sin cambios |
+
+(Con comparaciones: 30.06 → 14.18 → 12.19 y 42.00 → 26.13 → 24.14.) En las nueve
+distribuciones los conteos son idénticos con los tres presupuestos, en modo O(1) y con
+buffer: el presupuesto nunca se agota fuera del adversario. Elegí 4 y no 2 por margen
+para entradas legítimas con muchas particiones desparejas, que no medí. La suite completa
+pasa (differential, extra, OOO, memoria, ASan+UBSan) y los conteos del harness no cambian.
+La garantía O(n log n) no cambia: el respaldo es el mismo, solo llega antes.
+
 ## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
 
 **Antecedente directo: Radsort** (Clausecker y Schintke, "Parallel O(√n) Overhead LSD Radix
