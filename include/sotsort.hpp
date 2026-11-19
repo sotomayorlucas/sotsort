@@ -481,7 +481,10 @@ private:
 #endif
     }
 
-    void insertion(std::size_t lo, std::size_t hi) {
+#if defined(__GNUC__) || defined(__clang__)
+    __attribute__((always_inline))
+#endif
+    inline void insertion(std::size_t lo, std::size_t hi) {
         for (std::size_t i = lo + 1; i < hi; ++i) {
             if (!lt(a_[i], a_[i - 1])) continue;
             T v = std::move(a_[i]);
@@ -961,7 +964,9 @@ private:
     // ¿Se puede paginar? Solo con un buffer reservado aparte: en modo O(1) (buffer propio) la
     // tabla de páginas rompería la cota de memoria y las zonas usan el buffer propio.
     bool paged_ok(std::size_t n) const {
-        if (buf_ == own_ || n < 4096 || B_ * 2 >= n) return false;
+        // Con un buffer grande (más de n/8) casi todas las mezclas entran en él y la copia en
+        // bloque al buffer es barata: paginar (dos pasadas más y runs repartidos) midió peor.
+        if (buf_ == own_ || n < 4096 || B_ * 8 > n) return false;
         const std::size_t P = paged_P(n);
         if (P < 64) return false;
         const std::size_t pages = n / P + paged_K(n) + 2;
@@ -972,6 +977,30 @@ private:
     // copiar a páginas y volver cuesta más que mezclar directo, y con runs muy cortos (menos de
     // 32 en promedio) paginar midió peor con comparaciones caras.
     static constexpr int PG_PRE = 17;
+    // Bucle de mezcla del camino paginado: k pasos sin cruzar bordes de página. Va aparte y con
+    // flatten porque, dentro del lambda grande, gcc dejaba el comparador sin expandir (con
+    // comparaciones caras costaba hasta un 30%).
+#if defined(__GNUC__) && !defined(__clang__)
+    __attribute__((flatten))
+#endif
+    T* merge_run_k(T*& x1, T*& y1, T* o1, std::size_t k) {
+        T *x = x1, *y = y1;
+        for (std::size_t t = 0; t < k; ++t) {
+            if (lt(*y, *x)) *o1++ = std::move(*y++);
+            else *o1++ = std::move(*x++);
+        }
+        x1 = x; y1 = y;
+        return o1;
+    }
+    // Mezcla hacia atrás de X (aparte) e Y, dejando el resultado en Y[0, lx+ly): Y tiene lugar.
+#if defined(__GNUC__) && !defined(__clang__)
+    __attribute__((flatten))
+#endif
+    void merge_back_into(T* xa, std::size_t lx, T* ya, std::size_t ly) {
+        T *xb = xa + lx, *yb = ya + ly, *o = ya + lx + ly;
+        while (xb != xa && yb != ya) { if (lt(*(yb - 1), *(xb - 1))) *--o = std::move(*--xb); else *--o = std::move(*--yb); }
+        while (xb != xa) *--o = std::move(*--xb);
+    }
     void paged_natural_merge_sort(std::size_t lo, std::size_t hi, std::size_t known, const std::size_t (*pre)[2], int npre) {
         const std::size_t n = hi - lo, K = paged_K(n), P = paged_P(n), NA = n / P;
         T* const A = a_ + lo;
@@ -990,9 +1019,7 @@ private:
             std::uint32_t* xs = pr_stk_.data() + X.off;
             std::uint32_t* ys = pr_stk_.data() + Y.off;
             if (lx + ly <= P && px == 1 && py == 1) {           // cabe en una página: mezcla hacia atrás en la de Y
-                T *xa = base(xs[0]), *xb = xa + lx, *ya = base(ys[0]), *yb = ya + ly, *o = ya + lx + ly;
-                while (xb != xa && yb != ya) { if (lt(*(yb - 1), *(xb - 1))) *--o = std::move(*--xb); else *--o = std::move(*--yb); }
-                while (xb != xa) *--o = std::move(*--xb);
+                merge_back_into(base(xs[0]), lx, base(ys[0]), ly);
                 pr_fr_.push_back(xs[0]);
                 xs[0] = ys[0];
                 X.len += ly; --top; pr_stk_.resize(X.off + 1);
@@ -1008,10 +1035,7 @@ private:
                 if (rx && ry) {
                     k = std::min(k, std::min(static_cast<std::size_t>(x2 - x1), static_cast<std::size_t>(y2 - y1)));
                     T *xb = x1, *yb = y1;
-                    for (std::size_t t = 0; t < k; ++t) {
-                        if (lt(*y1, *x1)) *o1++ = std::move(*y1++);
-                        else *o1++ = std::move(*x1++);
-                    }
+                    o1 = merge_run_k(x1, y1, o1, k);
                     rx -= static_cast<std::size_t>(x1 - xb); ry -= static_cast<std::size_t>(y1 - yb);
                 } else if (rx) {
                     k = std::min(k, static_cast<std::size_t>(x2 - x1));
@@ -1036,7 +1060,50 @@ private:
         std::size_t i = lo;
         int ip = 0;
         while (i < hi) {
-            std::size_t j = ip < npre ? pre[ip++][1] : next_run(i, lo, hi, known);
+            std::size_t j;
+            if (ip < npre) j = pre[ip++][1];
+            else {
+            // Misma detección que next_run, escrita en línea: como llamada, gcc generaba un bucle
+            // de inserción más lento (~10% con comparaciones caras).
+            if (i == lo && known > lo + 1) j = known;
+            else if (i + 1 < hi && lt(a_[i + 1], a_[i])) {
+                j = i + 2;
+                while (j < hi && lt(a_[j], a_[j - 1])) ++j;
+                std::reverse(a_ + i, a_ + j);              // estrictamente descendente: invertir es estable
+            } else {
+                j = i + 1;
+                while (j < hi && !lt(a_[j], a_[j - 1])) ++j;
+            }
+            if (j - i < RUN) {
+    #ifndef SOT_NO_ZONES
+                // Zona desordenada (v8-r2): 8 o más runs naturales seguidos de menos de 8
+                // elementos. Se extiende hasta el primer run de 16 o más y se ordena con el
+                // quicksort estable: queda como un solo run.
+                std::size_t e = j, tiny = 1;
+                while (TRIV && e < hi) {            // solo tipos triviales: con strings midió peor
+                    std::size_t f = e + 1;
+                    const std::size_t cap = std::min(hi, e + 16);   // alcanza con saber si llega a 16
+                    if (f < hi && lt(a_[f], a_[e])) { ++f; while (f < cap && lt(a_[f], a_[f - 1])) ++f; }
+                    else { while (f < cap && !lt(a_[f], a_[f - 1])) ++f; }
+                    if (f - e >= (tiny >= 8 ? 16u : 8u)) break;
+                    e = f; ++tiny;
+                }
+                if (tiny >= 8) {
+                    int budget = 0;
+                    for (std::size_t k = e - i; k; k >>= 1) ++budget;
+                    // En el camino paginado el buffer guarda páginas: la zona usa el buffer propio.
+                    T* sb = buf_; std::size_t sB = B_;
+                    if (paging_) { buf_ = own_; B_ = B0; }
+                    adaptive_ = false;
+                    quick_from(i, e, budget, false, T{}, nullptr, 0);
+                    adaptive_ = true;
+                    buf_ = sb; B_ = sB;
+                    j = e;
+                } else
+    #endif
+                { std::size_t e2 = std::min(hi, i + RUN); insertion(i, e2); j = e2; }
+            }
+            }
             // copiar [i, j) a páginas y liberar las páginas completas del arreglo ya copiadas
             pr_cur_.clear();
             for (std::size_t t = i; t < j; t += P) {
@@ -1149,7 +1216,50 @@ private:
         };
         int ip = 0;
         while (i < hi) {
-            std::size_t j = ip < npre ? pre[ip++][1] : next_run(i, lo, hi, known);
+            std::size_t j;
+            if (ip < npre) j = pre[ip++][1];
+            else {
+            // Misma detección que next_run, escrita en línea: como llamada, gcc generaba un bucle
+            // de inserción más lento (~10% con comparaciones caras).
+            if (i == lo && known > lo + 1) j = known;
+            else if (i + 1 < hi && lt(a_[i + 1], a_[i])) {
+                j = i + 2;
+                while (j < hi && lt(a_[j], a_[j - 1])) ++j;
+                std::reverse(a_ + i, a_ + j);              // estrictamente descendente: invertir es estable
+            } else {
+                j = i + 1;
+                while (j < hi && !lt(a_[j], a_[j - 1])) ++j;
+            }
+            if (j - i < RUN) {
+    #ifndef SOT_NO_ZONES
+                // Zona desordenada (v8-r2): 8 o más runs naturales seguidos de menos de 8
+                // elementos. Se extiende hasta el primer run de 16 o más y se ordena con el
+                // quicksort estable: queda como un solo run.
+                std::size_t e = j, tiny = 1;
+                while (TRIV && e < hi) {            // solo tipos triviales: con strings midió peor
+                    std::size_t f = e + 1;
+                    const std::size_t cap = std::min(hi, e + 16);   // alcanza con saber si llega a 16
+                    if (f < hi && lt(a_[f], a_[e])) { ++f; while (f < cap && lt(a_[f], a_[f - 1])) ++f; }
+                    else { while (f < cap && !lt(a_[f], a_[f - 1])) ++f; }
+                    if (f - e >= (tiny >= 8 ? 16u : 8u)) break;
+                    e = f; ++tiny;
+                }
+                if (tiny >= 8) {
+                    int budget = 0;
+                    for (std::size_t k = e - i; k; k >>= 1) ++budget;
+                    // En el camino paginado el buffer guarda páginas: la zona usa el buffer propio.
+                    T* sb = buf_; std::size_t sB = B_;
+                    if (paging_) { buf_ = own_; B_ = B0; }
+                    adaptive_ = false;
+                    quick_from(i, e, budget, false, T{}, nullptr, 0);
+                    adaptive_ = true;
+                    buf_ = sb; B_ = sB;
+                    j = e;
+                } else
+    #endif
+                { std::size_t e2 = std::min(hi, i + RUN); insertion(i, e2); j = e2; }
+            }
+            }
             if (top > 0) {
                 int p = powerloop(st[top - 1].s - lo, st[top - 1].len, j - i, nn);
                 while (top > 1 && st[top - 2].power > p) merge_top();
