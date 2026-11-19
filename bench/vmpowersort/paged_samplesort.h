@@ -81,27 +81,32 @@ void distribute(T* a, std::size_t m, const T* spl, std::size_t k, Ctx<T, Lt>& c,
 }
 
 template <class T, class Lt>
-void psort(T* a, std::size_t m, Ctx<T, Lt>& c, T* spl, T* smp, std::uint16_t* grp, std::uint32_t* src, int depth = 0) {
+void psort(T* a, std::size_t m, Ctx<T, Lt>& c, T* spl, T* smp, std::uint16_t* grp, std::uint32_t* src, int depth = 0, int bad = 0) {
     const std::size_t k = ways(c);
     // Presupuesto de pasadas: con muestras malas (o armadas) se cae al quicksort de SotSort,
     // que tiene su propio respaldo O(n log n). 2·log_k(n) + 2 pasadas como máximo.
-    if (m <= c.B || k < 2 || depth > c.max_depth) { base(a, m, c); return; }
+    if (m <= c.B || k < 2 || depth > c.max_depth || bad > 1) { base(a, m, c); return; }
     const std::size_t ns = std::min<std::size_t>(m, 8 * k);
     for (std::size_t i = 0; i < ns; ++i) smp[i] = a[c.rng() % m];
     std::sort(smp, smp + ns, c.lt);
     for (std::size_t j = 1; j < k; ++j) spl[j - 1] = smp[j * ns / k];
     std::size_t start[257];
     distribute(a, m, spl, k, c, start, grp, src);
+    // Pasada mala: el grupo más grande se queda con más de la mitad. Dos malas seguidas en un
+    // camino de la recursión -> caso base (quicksort de SotSort, con su propio respaldo).
+    std::size_t big = 0;
+    for (std::size_t j = 0; j < k; ++j) big = std::max(big, start[j + 1] - start[j]);
+    const int nbad = big > m / 2 ? bad + 1 : 0;
     for (std::size_t j = 0; j < k; ++j) {
         std::size_t len = start[j + 1] - start[j];
         if (len == m) { base(a, m, c); return; }      // sin progreso (muchos iguales)
-        if (len > 1) psort(a + start[j], len, c, spl, smp, grp, src, depth + 1);
+        if (len > 1) psort(a + start[j], len, c, spl, smp, grp, src, depth + 1, len > m / 2 ? nbad : 0);
     }
 }
 
 // bytes: memoria total permitida (buffer + tablas + muestra).
 template <class T, class Lt = std::less<T>>
-void sort(T* a, std::size_t n, std::size_t bytes, std::size_t K = 64, Lt lt = Lt()) {
+void sort(T* a, std::size_t n, std::size_t bytes, std::size_t K = 64, Lt lt = Lt(), std::uint64_t seed = 1) {
     if (n < 2) return;
     {   // Ruteo de SotSort: con estructura, su camino normal con el mismo presupuesto.
         sot::Sorter<T, Lt> probe(a, lt);
@@ -133,6 +138,7 @@ void sort(T* a, std::size_t n, std::size_t bytes, std::size_t K = 64, Lt lt = Lt
     std::unique_ptr<std::uint16_t[]> grp(new std::uint16_t[slots]);
     std::unique_ptr<std::uint32_t[]> src(new std::uint32_t[slots]);
     c.buf = buf.get();
+    c.rng.seed(seed);
     { int lk = 0; for (std::size_t x = k; x > 1; x >>= 1) ++lk; int ln = 0; for (std::size_t x = n; x > 1; x >>= 1) ++ln;
       c.max_depth = 2 * (ln + lk - 1) / lk + 2; }
     psort(a, n, c, spl.get(), smp.get(), grp.get(), src.get());

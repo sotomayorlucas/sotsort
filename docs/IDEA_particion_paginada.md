@@ -253,6 +253,37 @@ n hasta 3·10^5; presupuestos de 20 KB a 1 MB), con ASan y UBSan
 (`bench/cost/paged_samplesort_test.cpp`). Tope de pasadas: 2·log_k n + 2; después cae al
 quicksort de SotSort, que tiene su propio respaldo. No probé adversarios contra la muestra.
 
+## 2g. Adversario contra la muestra
+
+`bench/cost/paged_samplesort_adversary.cpp`: adversario perezoso de McIlroy (responde
+comparaciones sobre la marcha congelando valores) contra `pss::sort` con la semilla fija
+del prototipo y el presupuesto de VM-Powersort; la entrada que construye se re-ejecuta con
+el tipo contador. También se construye el adversario contra SotSort sin páginas.
+
+Primera versión (solo tope de pasadas 2·log_k n + 2): n = 10^6, 95.4 comparaciones y 123.3
+movimientos por elemento, contra 19.6 y 22.9 con entrada aleatoria.
+
+Corrección: una pasada es mala si el grupo más grande supera m/2; dos malas seguidas en un
+camino de la recursión mandan el rango al caso base (quicksort de SotSort, con su respaldo
+por mezclas). Con eso (movimientos y comparaciones por elemento):
+
+| n | entrada | paginado cmp / mov | SotSort cmp / mov |
+|---|---|---|---|
+| 10^5 | aleatoria | 16.30 / 17.68 | 16.45 / 30.35 |
+| 10^5 | adversario del paginado | 35.74 / 68.30 | 14.08 / 21.14 |
+| 10^5 | adversario de SotSort | 14.15 / 14.40 | 25.45 / 64.91 |
+| 10^6 | aleatoria | 19.64 / 22.94 | 19.62 / 44.88 |
+| 10^6 | adversario del paginado | 42.00 / 96.70 | 8.58 / 22.80 |
+| 10^6 | adversario de SotSort | 30.08 / 95.59 | 30.06 / 95.59 |
+
+Lectura: el peor caso construido queda en el orden del peor caso del propio SotSort
+(≈ 96 movimientos por elemento en 10^6), porque el adversario empuja al caso base y ataca
+el quicksort de abajo. No es un peor caso garantizado bueno: VM-Powersort, como mergesort,
+no tiene esta debilidad. La entrada construida depende de la semilla: con otra semilla la
+misma entrada cuesta 17.37 / 17.74 en 10^6. Con semilla secreta por llamada (SotSort ya la
+admite en `Options::seed`) el ataque necesita conocerla.
+Los conteos con entrada aleatoria en el harness no cambian (int 18.98 / 22.14).
+
 ## 3. Estado de la literatura (búsqueda del 19 nov 2026, no exhaustiva)
 
 **Antecedente directo: Radsort** (Clausecker y Schintke, "Parallel O(√n) Overhead LSD Radix
