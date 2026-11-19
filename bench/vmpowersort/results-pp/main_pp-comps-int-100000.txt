@@ -1,0 +1,9 @@
+RUNNING TESTS WITH maxN = 1000000 and seqLength = 100000 and iters = 2 and type = int with timsort minirun
+
+Output: average comparisons
+
+NR:	almost	sotvm	
+1	3347503.0000000000	3057202.0000000000	
+2	3965559.0000000000	3983313.0000000000	
+AVERAGE: 
+3656531.0000000000	3520257.5000000000	

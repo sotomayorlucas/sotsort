@@ -1,0 +1,9 @@
+RUNNING TESTS WITH maxN = 1000000 and seqLength = 10000 and iters = 2 and type = int with timsort minirun
+
+Output: average assignments
+
+NR:	almost	sotvm	
+1	8440993.0000000000	8148618.0000000000	
+2	8447396.0000000000	8158914.0000000000	
+AVERAGE: 
+8444194.5000000000	8153766.0000000000	

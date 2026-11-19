@@ -1308,8 +1308,73 @@ private:
     std::size_t part_block(std::size_t lo, std::size_t hi, const T& piv, bool le) {
         return part_block_to(lo, hi, piv, le, buf_, true);
     }
+#ifdef SOT_PAGED_PART
+    // Partición estable por páginas (experimental, docs/IDEA_particion_paginada.md).
+    // Páginas de P = B/2; ≤ 4.5 movimientos por elemento para cualquier B. Las tablas de bits
+    // (O(m/P)) se piden al heap: todavía no entran en el presupuesto de memoria.
+    std::size_t paged_partition(std::size_t lo, std::size_t hi, const T& piv, bool le) {
+        T* a = a_ + lo;
+        const std::size_t m = hi - lo, P = B_ / 2;
+        T* LB = buf_; T* RB = buf_ + P;
+        std::size_t nl = 0, nr = 0, w = 0;
+        const std::size_t words = m / P / 64 + 2;
+        std::unique_ptr<std::uint64_t[]> side(new std::uint64_t[words]()), done(new std::uint64_t[words]());
+        std::unique_ptr<std::size_t[]> pre(new std::size_t[words + 1]);
+        for (std::size_t r = 0; r < m; ++r) {
+            bool left = le ? !lt(piv, a[r]) : lt(a[r], piv);
+            if (left) {
+                LB[nl++] = std::move(a[r]);
+                if (nl == P) { std::move(LB, LB + P, a + w * P); ++w; nl = 0; }
+            } else {
+                RB[nr++] = std::move(a[r]);
+                if (nr == P) { std::move(RB, RB + P, a + w * P); side[w / 64] |= 1ull << (w % 64); ++w; nr = 0; }
+            }
+        }
+        std::move(LB, LB + nl, a + w * P);
+        std::move(RB, RB + nr, a + w * P + nl);
+        pre[0] = 0;
+        for (std::size_t j = 0; j < words; ++j) pre[j + 1] = pre[j] + static_cast<std::size_t>(__builtin_popcountll(side[j]));
+        auto rights_before = [&](std::size_t i) {
+            std::uint64_t mask = (i % 64) ? (side[i / 64] & ((1ull << (i % 64)) - 1)) : 0;
+            return pre[i / 64] + static_cast<std::size_t>(__builtin_popcountll(mask));
+        };
+        const std::size_t b = rights_before(w), aL = w - b;
+        auto select = [&](std::size_t k, bool right) {
+            std::size_t l0 = 0, h0 = words;
+            auto cnt = [&](std::size_t j) { return right ? pre[j] : j * 64 - pre[j]; };
+            while (h0 - l0 > 1) { std::size_t md = (l0 + h0) / 2; if (cnt(md) <= k) l0 = md; else h0 = md; }
+            std::size_t r = k - cnt(l0);
+            std::uint64_t word = right ? side[l0] : ~side[l0];
+            for (;;) { std::size_t z = static_cast<std::size_t>(__builtin_ctzll(word)); if (!r) return l0 * 64 + z; word &= word - 1; --r; }
+        };
+        auto src = [&](std::size_t j) { return j < aL ? select(j, false) : select(j - aL, true); };
+        for (std::size_t i = 0; i < w; ++i) {
+            if ((done[i / 64] >> (i % 64)) & 1) continue;
+            if (src(i) == i) { done[i / 64] |= 1ull << (i % 64); continue; }
+            std::move(a + i * P, a + (i + 1) * P, buf_);
+            std::size_t hole = i;
+            for (;;) {
+                done[hole / 64] |= 1ull << (hole % 64);
+                std::size_t s2 = src(hole);
+                if (s2 == i) { std::move(buf_, buf_ + P, a + hole * P); break; }
+                std::move(a + s2 * P, a + (s2 + 1) * P, a + hole * P);
+                hole = s2;
+            }
+        }
+        const std::size_t s0 = aL * P, e = w * P;
+        if (nl && e > s0) {                   // sin parcial izquierda no hay nada que correr (y no autoasignar)
+            std::move(a + e, a + e + nl, buf_);
+            std::move_backward(a + s0, a + e, a + e + nl);
+            std::move(buf_, buf_ + nl, a + s0);
+        }
+        return lo + s0 + nl;
+    }
+#endif
     // Gather en orden de contador binario; el corte de cada segmento viaja en la pila.
     std::size_t stable_partition(std::size_t lo, std::size_t hi, const T& piv, bool le) {
+#ifdef SOT_PAGED_PART
+        if (hi - lo > 8 * B_ && B_ / 2 >= 64) return paged_partition(lo, hi, piv, le);
+#endif
         struct S { std::size_t s, sp; int lvl; } st[70];
         int top = 0;
         const std::size_t B = B_;

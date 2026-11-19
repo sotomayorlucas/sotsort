@@ -88,9 +88,11 @@ std::size_t paged_partition(T* a, std::size_t m, T* buf, std::size_t P, Pred pre
     // Fase 3: [L (aL·P) | R (b·P) | nl | nr] -> [L | nl | R | nr]: la parcial derecha ya está
     // en su lugar (son los últimos derechos); la izquierda se rota con las páginas derechas.
     const std::size_t s = aL * P, e = w * P, k = nl;
-    std::move(a + e, a + e + k, buf);
-    std::move_backward(a + s, a + e, a + e + k);
-    std::move(buf, buf + k, a + s);
+    if (k && e > s) {                                   // evita autoasignaciones (rompen std::string)
+        std::move(a + e, a + e + k, buf);
+        std::move_backward(a + s, a + e, a + e + k);
+        std::move(buf, buf + k, a + s);
+    }
     return s + nl;
 }
 
