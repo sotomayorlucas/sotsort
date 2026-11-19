@@ -97,3 +97,35 @@ el conteo a n. Con n < 2^16, o compilando con `-DSOT_EXACT_TURNS`, el conteo sig
   sigue recorriendo el arreglo una vez; el recorrido de los giros era el que sobraba.
 - **Garantía de peor caso:** sin cambios. Ninguno de los dos caminos depende de la decisión para
   su cota O(n log n).
+
+## Observación P (v8-r6: tope de particiones malas)
+
+El presupuesto de particiones desparejas de QuickEstable pasa de ⌊lg n⌋ + 1 a
+min(⌊lg n⌋ + 1, 4) (`SOT_BAD_BUDGET`). Cuando se agota, el rango termina en la mezcla de
+respaldo, igual que antes.
+
+- **Corrección:** el presupuesto solo decide cuándo se usa el respaldo; el respaldo es un orden
+  estable correcto para cualquier entrada. Sin cambios en los invariantes de la partición.
+- **Terminación:** el presupuesto sigue siendo finito y decrece en cada paso desparejo (incluido
+  el de separar iguales, v6.1); la recursión sobre el lado chico no cambia.
+- **Costo:** peor caso O(n log n) igual que antes, con el respaldo alcanzado después de a lo sumo
+  4 pasos desparejos por camino. Medido: el adversario de McIlroy baja de 95.6 a 29.3 movimientos
+  por elemento (n = 10^6, presupuesto de VM-Powersort); en nueve distribuciones de `bench/` los
+  conteos no cambian (`bench/cost/bad_budget_dists.cpp`).
+
+## Observación S (v8-r6: samplesort estable por páginas)
+
+`pss_sort` reemplaza a QuickEstable en la raíz cuando hay buffer de bloques (B < n/2) y la ruta
+eligió el quicksort. Demostración de la pasada (lemas 1'–3': siempre hay ranura libre al volcar;
+el índice de ranura es el orden de volcado; el espacio final mide la suma de las parciales),
+fases y costo: `docs/IDEA_particion_paginada.md` §2b, §2d, §2f, §2i.
+
+- **Corrección:** cada pasada es una distribución estable por grupo (grupo = cantidad de
+  separadores ≤ x, así que los iguales caen juntos y los grupos quedan ordenados entre sí); los
+  casos base son QuickEstable, ya demostrado. Verificación exhaustiva de la pasada para claves en
+  {0..k−1}, k = 2..4, P = 1..3, m ≤ 9.
+- **Terminación:** cada pasada sin grupo de tamaño m achica todos los rangos; con un grupo de
+  tamaño m se va al caso base; la profundidad está acotada por 2·log_k n + 2 y por dos pasadas
+  malas seguidas.
+- **Memoria:** páginas y separadores dentro del buffer; tablas (6 bytes por ranura) dentro de la
+  reserva de tablas del plan, verificada por `tests/test_mem.cpp`.
