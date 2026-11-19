@@ -321,3 +321,9 @@ Against VM-Powersort with the same memory, sotvm now makes no more comparisons o
 (largest excess: +0.02 comparisons). With n/2 memory against copy-Powersort it still makes more moves for S ≥ 1000.
 Indicative times (cloud VM, 10 runs, one session), sotvm / VM-PS: int 1.02, 0.98, 0.83 (S = 2, 100, 10^6);
 ptr 0.88, 0.72, 0.98; fastarr 0.89, 0.86, 0.56; arr 0.59, 0.88, 0.81.
+
+**Second machine, v8-r6** (`results-pc-r6/`, Core Ultra 7 155H VM, gcc 11.4, n ≈ 10^6, 10 runs, time only):
+sotvm / VM-PS for S = 2, 100, 10^6: int 1.12, 0.96, 0.78; ptr 0.78, 0.63, 0.93; fastarr 0.94, 0.82, 0.52; arr 0.54, 0.78, 0.61.
+On this machine int at S = 2 is 12% slower in time despite 30% fewer moves and 32% fewer comparisons: with cheap
+elements the branchy binary-search classification (one unpredictable branch per level of the search) likely dominates;
+IPS4o uses a branchless decision tree for this. Not measured with hardware counters.

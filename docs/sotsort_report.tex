@@ -288,8 +288,12 @@ CPython-style Powersort it makes fewer comparisons and moves at $S=2$ (18.96 and
 $S=1000$, 1.73 against 1.45 at $S=10^6$). Times, as an indication only (cloud VM, one session,
 $n\approx10^6$, 10 runs; SotSort over Virtual-Memory Powersort for $S=2$, 100 and $10^6$):
 \texttt{int} 1.02, 0.98, 0.83; \texttt{ptr} 0.88, 0.72, 0.98; \texttt{fastarr} 0.89, 0.86, 0.56;
-\texttt{arr} 0.59, 0.88, 0.81. Repeated runs of identical code moved time ratios by up to about
-10\%, so I do not read small time differences as results.
+\texttt{arr} 0.59, 0.88, 0.81. On the second machine of revision 5 (Core Ultra 7 VM): 1.12, 0.96,
+0.78; 0.78, 0.63, 0.93; 0.94, 0.82, 0.52; 0.54, 0.78, 0.61. So with cheap integers at $S=2$ SotSort is
+2--12\% slower in time while making about 30\% fewer moves and comparisons; the likely cause, not
+measured, is the branchy binary search that classifies each element (IPS$^4$o uses a branchless
+decision tree). Repeated runs of identical code moved time ratios by up to about 10\%, so I do not
+read small time differences as results.
 
 \paragraph{Worst case.} McIlroy's adaptive adversary, run against the samplesort with its fixed
 seed and the same budget, first produced 95 comparisons and 123 moves per element at $n=10^6$.
