@@ -1,0 +1,103 @@
+%======================================================================
+\section{Revisiones r3 a r6}\label{sec:v8r6}
+Estas revisiones salieron de comparar la implementación con Virtual-Memory Powersort
+(Moltmann, Nakajima y Wild, ESA 2026) con la misma memoria. Las tres primeras (r3: giros
+estimados por muestreo; r4: mezcla por páginas; r5: runs paginados) solo eligen o reorganizan
+mezclas estables ya cubiertas; sus argumentos están en \texttt{docs/LEMAS\_v8r.md}. Esta
+sección cubre lo que r6 agrega.
+
+\subsection{Tope de particiones malas}
+\begin{observacion}\label{obs:tope}
+Si el presupuesto inicial de \textsc{QuickEstable} pasa de $\lfloor\lg n\rfloor+1$ a
+$\min(\lfloor\lg n\rfloor+1,4)$, la corrección y la terminación no cambian.
+\end{observacion}
+\begin{proof}
+El presupuesto solo decide cuándo un rango pasa al respaldo por mezclas, que ordena de forma
+estable cualquier entrada. Sigue siendo un natural que decrece en cada paso desparejo
+(incluida la separación de iguales), así que la cantidad de pasos desparejos por camino es
+finita, y el resto del argumento de profundidad no depende de su valor inicial.
+\end{proof}
+
+\subsection{Una pasada de distribución por páginas}
+Sea \seg{A}{0}{m} el rango, $k\ge2$ grupos, páginas de $P\ge1$ elementos y un buffer con $k$
+páginas de salida $O_0,\dots,O_{k-1}$, inicialmente vacías. El grupo de $x$ es
+$g(x)=|\{j: s_j\le x\}|$ para separadores $s_1\le\dots\le s_{k-1}$, de modo que $x\le y$
+implica $g(x)\le g(y)$ y los iguales tienen el mismo grupo. La pasada lee $A[r]$ para
+$r=0,\dots,m-1$, lo agrega al final de $O_{g(A[r])}$, y si esa página llega a $P$ elementos
+la copia a la ranura $w$, es decir a \seg{A}{wP}{(w+1)P}, anota $G[w]=g$, vacía la página y
+hace $w\gets w+1$.
+
+\begin{lema}[ranura libre]\label{lem:ranura}
+Cada copia a la ranura $w$ escribe solo posiciones ya leídas y que no contienen elementos
+copiados antes.
+\end{lema}
+\begin{proof}
+Antes de leer $A[r]$ vale el invariante $r=wP+\sum_g|O_g|$, porque cada elemento leído está en
+exactamente una página de salida o en una ranura copiada. Si al agregar $A[r]$ una página llega
+a $P$, entonces $r+1\ge wP+P$, así que \seg{A}{wP}{(w+1)P} está contenido en las posiciones ya
+leídas \seg{A}{0}{r+1}. Las ranuras $0,\dots,w-1$ son las únicas escritas antes, y son
+disjuntas de la ranura $w$.
+\end{proof}
+
+\begin{lema}[orden]\label{lem:orden}
+Para cada grupo $g$, la sucesión de sus elementos en orden de entrada es la concatenación de
+las ranuras $i$ con $G[i]=g$ en orden creciente de $i$, seguida de $O_g$ al terminar.
+\end{lema}
+\begin{proof}
+$O_g$ recibe los elementos del grupo $g$ en orden de lectura y se vacía entera en cada copia;
+las copias usan ranuras con índice estrictamente creciente.
+\end{proof}
+
+\begin{lema}[espacio final]\label{lem:espacio}
+Al terminar, \seg{A}{wP}{m} mide $\sum_g|O_g|$ y no contiene elementos pendientes.
+\end{lema}
+\begin{proof}
+Es el invariante del Lema~\ref{lem:ranura} con $r=m$.
+\end{proof}
+
+\begin{teorema}\label{thm:pasada}
+Después de (1) copiar $O_0,\dots,O_{k-1}$ en ese orden a \seg{A}{wP}{m}, (2) permutar las
+ranuras con destino $F_{G[i]}+|\{i'<i: G[i']=G[i]\}|$, donde $F_g$ es la cantidad de ranuras
+de grupos menores que $g$, y (3) para $g=k-1,\dots,0$, poner $O_g$ en
+$[F_{g+1}P+D_g,\ F_{g+1}P+D_{g+1})$ y correr las ranuras del grupo $g$ $D_g$ lugares a la
+derecha, con $D_g=\sum_{h<g}|O_h|$, el rango contiene los elementos ordenados de forma estable
+por $g$: primero todos los del grupo 0 en orden de entrada, después los del 1, etcétera.
+\end{teorema}
+\begin{proof}
+(1) es posible por el Lema~\ref{lem:espacio}. El destino de (2) es una biyección de
+$\{0,\dots,w-1\}$ en sí mismo que agrupa por $G$ y conserva el orden relativo dentro de cada
+grupo; seguir sus ciclos con una página de buffer la realiza moviendo cada página una vez. En
+(3), el grupo $g$ termina en $[F_gP+D_g,\ F_{g+1}P+D_{g+1})$; como $D_g\le D_{g+1}$ y se procede
+de derecha a izquierda, ninguna escritura pisa una página o parcial que todavía no se movió.
+Por el Lema~\ref{lem:orden}, cada grupo queda en orden de entrada; los grupos quedan en orden
+creciente de $g$, y $g$ es monótono en la clave.
+\end{proof}
+
+\begin{observacion}
+Comparaciones: $m\lceil\lg k\rceil$ (el grupo se obtiene bajando un árbol implícito de los
+separadores). Movimientos: $2m+(M+C)P+bP+2\sum_g|O_g|\le 4{,}5m+O(kP)$, con $M$ páginas
+fuera de lugar, $C\le M/2$ ciclos de largo al menos 2 y $b$ páginas corridas. Verificado en
+forma exhaustiva para claves en $\{0,\dots,k-1\}$, $k=2..4$, $P=1..3$ y $m\le9$
+(1\,140\,207 casos).
+\end{observacion}
+
+\subsection{El samplesort}
+\textsc{SampleSortPáginas} aplica la pasada con separadores tomados de una muestra y recurre en
+cada grupo; un rango que entra en el buffer, un grupo que se queda con todo el rango, un camino
+con más de $2\log_k n+2$ pasadas o con dos pasadas seguidas cuyo grupo mayor supera la mitad
+van a \textsc{QuickEstable}.
+
+\begin{corolario}
+\textsc{SampleSortPáginas} ordena de forma estable y termina.
+\end{corolario}
+\begin{proof}
+Por inducción en la profundidad: cada pasada deja los grupos contiguos, ordenados entre sí y
+estables dentro (Teorema~\ref{thm:pasada}); ordenar cada grupo de forma estable da el orden
+estable del rango. Cada llamada recursiva es sobre un rango estrictamente menor (si no, va al
+caso base) y la profundidad está acotada; los casos base son \textsc{QuickEstable}, ya
+demostrado.
+\end{proof}
+
+El mecanismo de reusar bloques consumidos y anotar su grupo es de Radsort (Clausecker y
+Schintke, 2026), para radix LSD; agrupar en bloques de un tipo y restituir su orden por ciclos
+está en Logsort (aphitorite); el árbol de separadores sin saltos, en IPS$^4$o.

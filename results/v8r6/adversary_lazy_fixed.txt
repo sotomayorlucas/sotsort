@@ -1,0 +1,6 @@
+n=1000   comparaciones por elemento = 20.5
+n=2000   comparaciones por elemento = 22.7
+n=4000   comparaciones por elemento = 24.8
+n=8000   comparaciones por elemento = 26.9
+n=16000  comparaciones por elemento = 29.1
+n=32000  comparaciones por elemento = 31.1

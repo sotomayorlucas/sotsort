@@ -1,0 +1,8 @@
+1000000,rand,sot8r,O(1),20310656,1.0985,ok
+1000000,rand,blitsort,O(1),20558654,1.1119,ok
+1000000,rand,grail,O(1),20187953,1.0919,ok
+1000000,rand,wikisort,O(1),22477942,1.2158,ok
+1000000,rand,fluxsort,O(n),20570126,1.1126,ok
+1000000,rand,glidesort,O(n),20828563,1.1265,ok
+1000000,rand,driftsort,O(n),20822276,1.1262,ok
+1000000,rand,ipnsort,O(log n),20580414,1.1131,ok
