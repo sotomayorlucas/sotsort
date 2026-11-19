@@ -9,7 +9,9 @@ A stable sort for C++17, header-only. One algorithm, two memory regimes:
 
 The core is a stable quicksort: blocks are partitioned through the buffer and gathered with
 rotations; leaves are sorted with parity merges; inputs with long runs go to a natural merge sort.
-Integer keys with `std::less` use an AVX-512 (compress) or AVX2 (table) block partition.
+Integer keys with `std::less` use an AVX-512 (compress) or AVX2 (table) block partition. With a
+bounded buffer (smaller than n/2) and near-random input, version 8-r6 replaces the top of the
+quicksort by a stable k-way samplesort that works through pages (see below).
 
 ```cpp
 #include "sotsort.hpp"
@@ -19,43 +21,60 @@ sot::stable_sort(v.data(), v.size(), [](const Record& a, const Record& b) { retu
 
 ## Status — read this first
 
-This is version 8-r. The technical report describes and measures this code, at commit `c16d43f`.
-Development history and design notes (Spanish): `docs/RECONSTRUCCION.md`.
+This is version 8-r6. The technical report (`docs/sotsort_report.pdf`, revision 6; arXiv:2611.24786
+has earlier revisions) describes it. Commits: `c16d43f` (8-r), `b9e0df1` (8-r5), `ef55874` (8-r6).
+Development history and design notes (Spanish): `docs/RECONSTRUCCION.md`; the paged partition and
+samplesort, with proofs, tests and prior art: `docs/IDEA_particion_paginada.md`.
 
 ## What the measurements say
 
-One machine: a 2-vCPU cloud VM (Xeon, AVX-512), gcc 13, n = 10^6, median of 5, pinned to one core.
-Run-to-run noise on this machine reached ±15%. Raw data: `results/`. Do not cite these numbers
-without repeating them on dedicated hardware.
+Numbers are preliminary. Machine-independent counts (comparisons and element moves) are the main
+result; times are indicative, from shared 2-vCPU VMs where identical runs moved by up to ±15%.
 
+**Against Virtual-Memory Powersort** (Moltmann, Nakajima, Wild, ESA 2026), on its authors' harness,
+with exactly the memory it allocates (`bench/vmpowersort/`). Per element, n ≈ 10^6:
+
+| type, S (mean run length) | comparisons VM-PS / SotSort | moves VM-PS / SotSort |
+|---|---|---|
+| int, S = 2 (near-random) | 27.76 / 18.96 | 31.65 / 22.10 |
+| int, S = 1000 | 10.29 / 10.28 | 12.24 / 11.90 |
+| int, S = 10^6 | 2.03 / 2.04 | 4.04 / 2.08 |
+| fastarr (120-byte), S = 2 | 28.09 / 19.10 | 32.01 / 17.39 |
+
+On all 12 measured cells (int and fastarr, S from 2 to 10^6) SotSort makes no more comparisons
+(up to +0.02 per element) and no more moves. With n/2 memory against copy-Powersort it still makes
+more moves for S ≥ 1000. Time at S = 2 relative to VM-PS (two VMs): int 0.72–0.78, ptr 0.82–0.86,
+fastarr 0.73, arr 0.55–0.57. An adaptive adversary that knows the seed raises the samplesort to
+about 34 moves per element (n = 10^6); VM-Powersort, a mergesort, has no such weakness.
+
+**Against in-place and O(n)-memory sorts** (version 8-r5; the 8-r6 changes do not reach these paths).
+One cloud VM (Xeon, AVX-512), gcc 13, n = 10^6, median of 5, pinned. Raw data: `results/`.
 Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 
 | Input | u32 | u64 | key+index (comparator) |
 |---|---|---|---|
-| random | 0.63 | 0.72 | 1.14 |
-| 16 values | 0.46 | 0.62 | 0.80 |
-| √n values | 0.19 | 0.49 | 0.86 |
-| Zipf | 0.44 | 0.50 | 0.64 |
-| sorted | 1.09 | 1.00 | 2.57 |
-| reversed | 0.94 | 1.01 | 1.81 |
-| 1% noise | 1.08 | 1.06 | 1.08 |
-| 10% random tail | 0.67 | 0.75 | 1.50 |
-| organ pipe | 0.58 | 0.70 | 1.13 |
-| runs of √n | 0.53 | 0.75 | 1.23 |
-| runs of 63 | 0.42 | 0.48 | 0.78 |
+| random | 0.82 | 0.71 | 1.04 |
+| 16 values | 0.47 | 0.75 | 0.87 |
+| √n values | 0.32 | 0.57 | 0.59 |
+| Zipf | 0.45 | 0.66 | 0.87 |
+| sorted | 0.99 | 1.07 | 2.31 |
+| reversed | 0.92 | 1.01 | 1.62 |
+| 1% noise | 1.04 | 0.63 | 0.84 |
+| 10% random tail | 0.65 | 0.72 | 0.85 |
+| organ pipe | 0.55 | 0.65 | 0.78 |
+| runs of √n | 0.58 | 0.54 | 1.13 |
+| runs of 63 | 0.36 | 0.58 | 0.70 |
 
-- With 32- and 64-bit integers it is ahead of blitsort on 16 of 22 input classes (0.19–0.75) and
-  level on the other six (0.94–1.09). With a comparator that rules out the vector partition it
-  **loses on 7 of 11 classes, by up to 2.6× on sorted input**.
-- Against O(n)-memory stable sorts (fluxsort, glidesort, driftsort), the fast mode with one thread
-  is ahead on random u32/u64 (0.70–0.79 of the best of them) and behind glidesort on organ pipe,
-  a random tail and sawtooth input (1.4–1.9× for u64). The "16 values" and "√n values" rows of the
-  fast mode use the counting shortcut, so they are not a like-for-like comparison.
+- With 32- and 64-bit integers it is ahead of blitsort on 17 of 22 input classes (0.32–0.82) and
+  level on the other five (0.92–1.07). With a comparator that rules out the vector partition it
+  **loses on 4 of 11 classes, by up to 2.3× on sorted input**.
+- The fast mode (full buffer) is ahead of fluxsort, glidesort and driftsort on random input and
+  behind glidesort on organ pipe, a random tail and runs of √n (1.5–2.1× for u64).
 - The routing heuristics were tuned on this machine and on some of these same inputs, so the
   structured-input rows are optimistic.
-- Extra memory for 10^7 u64 (80 MB of data): under 0.5 MB in O(1) mode; about 40 MB in fast mode.
-- McIlroy's adversary with random pre-frozen positions: at most 1.14·n·log2(n) comparisons
-  (n = 10^5 and 10^6). This is evidence, not a proof.
+- Extra memory for 10^7 u64 (80 MB of data): under 0.5 MB in O(1) mode; about 37 MB in fast mode.
+- McIlroy's adversary with random pre-frozen positions: at most 0.70·n·log2(n) comparisons
+  (n = 10^5 and 10^6; 1.14 before the 8-r6 cap on bad partitions). Evidence, not a proof.
 - A defect of version 6 (no budget charge when separating elements equal to the pivot) is
   reproducible with `-DSOT_V6_BUG`: a lazy adversary forces about n/6 comparisons per element.
 
@@ -65,6 +84,9 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 - `T` must be default-constructible and copyable.
 - Tested on x86-64 Linux only. Not tested: ARM, Windows, cgroup v1, more than 2 physical cores.
 - The proofs are hand-written (Spanish, `docs/`); nothing is machine-checked.
+- The paged samplesort only runs with a bounded block buffer; in O(1) mode its page tables would not
+  fit, so the quicksort runs. Its worst case is bounded by O(n log n) but measured, not proved tight.
+- Logsort, the closest in-place stable quicksort, is not in the comparisons.
 
 ## Layout
 
@@ -73,6 +95,8 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
   (`sot::stable_sort_ooo`). Not part of the stable API; see `docs/OOO.md`.
 - `tests/` — differential tests against `std::stable_sort`, injected allocation failures,
   adversaries. `make test`, `make sanitize`, `make adversary`.
+- `bench/cost/` — operation-count experiments (partition cost model, paged partition and samplesort
+  prototypes, adversaries).
 - `bench/` — comparison harness. `bench/build.sh` fetches the third-party sorts.
 - `docs/` — technical report (English); proofs, addendum, design notes, OOO study and
   lemmas (Spanish), with LaTeX sources in `docs/tex/`.
@@ -83,7 +107,11 @@ The fused triple-reversal rotation follows blitsort's trinity rotation and the e
 merge comes from quadsort (both by Igor van den Hoven, "scandum"). Natural-run merging uses the
 power criterion of powersort (Munro and Wild). Galloping comes from Timsort (Tim Peters). The
 duplicate handling through a lower bound is inspired by pdqsort (Orson Peters), and the fallback
-on unbalanced partitions by introsort (Musser). SymMerge is by Kim and Kutzner.
+on unbalanced partitions by introsort (Musser). SymMerge is by Kim and Kutzner. The page merge and
+the paged runs follow Virtual-Memory Powersort (Moltmann, Nakajima, Wild). In the paged samplesort,
+reusing consumed blocks and recording each block's group comes from Radsort (Clausecker and
+Schintke), grouping into one-type blocks restored by cycles from Logsort (aphitorite), and block
+distribution with a branchless splitter tree from IPS⁴o (Axtmann, Witt, Ferizovic, Sanders).
 
 ## License
 

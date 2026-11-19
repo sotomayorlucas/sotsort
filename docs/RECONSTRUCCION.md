@@ -51,6 +51,30 @@ Medidas contra la reconstrucción inicial con corridas intercaladas (`results/ab
   máquina y sobre varias de las mismas entradas del banco: las filas de datos con estructura de la
   comparación con otros sorts son optimistas.
 
+## Revisiones r2–r6 (18–19 nov 2026): la comparación con Virtual-Memory Powersort
+
+Todo lo que sigue salió de correr SotSort en el harness de los autores de VM-Powersort con la
+misma memoria y contar comparaciones y movimientos (`bench/vmpowersort/README.md`, Updates 1–8).
+- **r2:** zonas desordenadas (ver arriba).
+- **r3:** la densidad de giros se estima con 64 ventanas de 256 pares (n ≥ 2^16); antes se
+  pagaba una comparación extra por elemento en entradas con estructura (Observación T de LEMAS).
+- **r4:** mezcla por páginas cuando los dos runs superan el buffer (idea de VM-Powersort), en vez
+  de rotaciones; regla de elementos grandes (≥ 64 bytes) hacia las mezclas.
+- **r5:** runs paginados en el camino de runs naturales (esquema de VM-Powersort); presupuesto de
+  memoria honesto (buffer redondeado, buffer propio y tablas); arreglos de generación de código
+  (comparador e inserción quedaban fuera de línea con gcc -O2).
+- **r6:** (a) diagnóstico: la partición estable binaria cuesta ≥ 1.5 movimientos por elemento y
+  nivel más rotaciones que crecen con lg(m/B) (`bench/cost/`); (b) samplesort estable por páginas
+  de k vías para entrada casi aleatoria con buffer acotado (mecanismo de Radsort y Logsort; ver
+  `docs/IDEA_particion_paginada.md`); (c) tope de 4 particiones malas en QuickEstable
+  (Observación P); (d) clasificación por árbol implícito sin saltos (como IPS4o).
+- Resultado: con la memoria de VM-Powersort, ninguna de las 12 celdas medidas hace más
+  comparaciones (± 0.02) ni más movimientos; con S = 2, 18.96 y 22.10 por elemento contra 27.76 y
+  31.65. Peor caso medido con el adversario de McIlroy: ~34 movimientos por elemento.
+- Descartado en el camino: rotación por malabarismo (juggling; quedó un rato en main por error y
+  se retiró en r4), estimar los runs por muestreo para decidir el paginado (muy grueso), la
+  partición de 2 vías por páginas (reemplazada por el samplesort; prototipo en `bench/cost/`).
+
 ## Verificación hecha (archivo final)
 - `tests/test.cpp` contra `std::stable_sort` (etiquetas para estabilidad): u32/i32/u64/i64, pares,
   registros de 16/40/128 B, strings; modos O1/Bloques/Completo; 1 a 4 hilos; orden por clave;
@@ -58,6 +82,9 @@ Medidas contra la reconstrucción inicial con corridas intercaladas (`results/ab
   ASan+UBSan y TSan limpios.
 - `tests/test_extra.cpp`: fallas de reserva inyectadas en cada punto, adversario, comparador que lanza.
 - `tests/test_ooo.cpp` y `tests/test_ooo_throw.cpp`: planificador experimental.
+- `tests/test_mem.cpp` (r5): el pico de memoria no supera el presupuesto, 600 casos.
+- `tests/test_pss.cpp` (r6): samplesort por páginas con registros de 112 bytes y strings; la
+  distribución de k vías se verificó además en forma exhaustiva (`bench/cost/paged_samplesort_test.cpp`).
 - Un contador temporal confirmó que las pruebas ejecutan las zonas, la regla de ruta y la sonda.
 - `tests/adv_quick.cpp`: adversario perezoso del libro contra QuickEstable. Con la línea de v6.1:
   20 a 31 comparaciones por elemento (n = 1000 a 32000). Con `-DSOT_V6_BUG`: 167, 335, 668, 1335

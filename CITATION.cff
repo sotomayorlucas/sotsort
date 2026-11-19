@@ -5,7 +5,17 @@ type: software
 authors:
   - family-names: Sotomayor
     given-names: Lucas
-version: "8-r"
-date-released: 2026-11-17
+version: "8-r6"
+date-released: 2026-11-19
 license: MPL-2.0
 repository-code: "https://github.com/sotomayorlucas/sotsort"
+preferred-citation:
+  type: report
+  title: "SotSort: a stable quicksort with a tunable buffer"
+  authors:
+    - family-names: Sotomayor
+      given-names: Lucas
+  year: 2026
+  identifiers:
+    - type: other
+      value: "arXiv:2611.24786"

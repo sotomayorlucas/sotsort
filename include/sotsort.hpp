@@ -5,7 +5,7 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at
 // https://mozilla.org/MPL/2.0/.
 //
-// sotsort.hpp — SotSort v8-r (RECONSTRUCCIÓN, 2026-11-17)
+// sotsort.hpp — SotSort v8-r6 (reconstrucción del 2026-11-17, revisiones r2–r6 hasta el 2026-11-19)
 //
 // El código fuente original de la versión 8 se perdió. Este archivo se
 // reescribió a partir de: el pseudocódigo y las demostraciones de v6.1/v8
