@@ -347,6 +347,21 @@ Lo que nuestra versión hace distinto (contribución posible, a validar):
 - integrado como camino de entrada casi aleatoria de un sort adaptativo con presupuesto fijo
   de memoria, con conteos contra VM-Powersort.
 
+**Antecedente directo de la versión de 2 vías: Logsort** (usuario aphitorite, GitHub,
+licencia MIT; fecha no indicada). Quicksort estable in-place en O(n log n): con un buffer de
+O(log n) agrupa los 0 y 1 de la partición en bloques de un solo tipo, codifica el orden de
+los bloques intercambiando elementos (O(log n) bits por par de bloques, sin tablas), lleva los
+bloques de la partición mayor a su lugar y reordena los otros por ciclos, como cycle sort.
+Es la misma familia que nuestra partición de 2 vías (§2b), con codificación implícita en vez
+de bits en una tabla; no tiene respaldo ante pivotes malos y su autor no lo describe como
+adaptativo. Debería figurar en las comparaciones de SotSort (no estaba).
+
+Polychroniou y Ross (SIGMOD 2014, "A comprehensive study of main-memory partitioning..."):
+particionado fuera de caché in-place "en listas de bloques" y "en segmentos"; con eso arman un
+LSB radix estable (no in-place), un MSB radix in-place y un sort por comparaciones con
+particionado de rango de alto fan-out. Solo leí el resumen y las diapositivas; no sé si el
+particionado in-place por listas de bloques conserva el orden. Pendiente leer el paper.
+
 Otros:
 - IPS4o / IPS2Ra (Axtmann, Witt, Ferizovic, Sanders): distribución por bloques con buffers y
   permutación de bloques; no preserva el orden de los bloques dentro de un bucket, no es
@@ -358,9 +373,12 @@ Otros:
   de bits; inestable.
 - VM-Powersort: páginas para mezclas.
 
-Conclusión honesta: la idea no es nueva en su núcleo. Lo presentable es la combinación
-(samplesort por comparaciones, MSD con grupos contiguos, dentro de un sort adaptativo con
-memoria acotada) y las mediciones, citando Radsort como origen del mecanismo.
+Conclusión honesta: la idea no es nueva en su núcleo. Reusar bloques consumidos y anotar a qué
+grupo pertenece cada uno está en Radsort (k vías, radix LSD); agrupar en bloques de un tipo y
+reordenarlos por ciclos con el orden registrado está en Logsort (2 vías, comparaciones).
+Lo presentable es la combinación (samplesort de k vías por comparaciones, MSD con grupos
+contiguos en cada pasada, dentro de un sort adaptativo con memoria acotada) y las mediciones,
+citando a los dos.
 
 ## 4. Próximos pasos
 
