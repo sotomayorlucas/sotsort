@@ -438,3 +438,22 @@ Resultados completos en `bench/cost/logsort_counts_1e6.txt` y `_1e7.txt`.
 - No es del paginado: con presupuesto, runs63 y asc1pct hacen 17.7 y 16.8 comparaciones en 10^7
   contra 2.2 y 1.8 en modo O(1); pasa igual con `-DSOT_NO_PAGED_SAMPLE`. Es el ruteo con buffer.
 - interl (mitades intercaladas): SotSort hace ~20.7 comparaciones contra ~16 de Logsort.
+
+## 2l. Grupos de iguales (v8-r7)
+
+Si dos de los k−1 separadores elegidos de la muestra son iguales, la pasada usa un árbol de k/2
+hojas y 2(k/2)−1 = k−1 grupos: el rango g−1, el grupo de los iguales a s_{g−1} y el rango g,
+como los buckets de igualdad de IPS4o. Grupo = 2g − [g > 0 y x == s_{g−1}], con x == s_{g−1}
+probado como !(s_{g−1} < x) (una comparación más; el árbol tiene un nivel menos: siguen siendo
+log2 k por elemento). Los separadores en orden van detrás del árbol (k−2 ≤ k−1 lugares). Los
+grupos de iguales quedan terminados y no se recursan; la regla de pasadas malas mira solo los
+rangos. Los lemas 1'–3' no cambian: solo cambia la función de grupo.
+
+Conteos (n = 10^7, tipo de 16 bytes, presupuesto VM, cmp / mov): dup16 14.01 / 7.95 → 6.00 / 3.94;
+zipf 14.46 / 8.12 → 7.09 / 4.36; sqrtn 14.18 / 10.31 → 12.91 / 9.02; aleatoria sin cambios
+(22.94 / 22.94). Zipf sigue por encima del quicksort sin paginado en comparaciones (4.94): solo
+reciben grupo los valores que aparecen repetidos entre los separadores elegidos (IPS4o además
+elimina duplicados de la muestra; no lo hice).
+Tests: suite completa; `tests/test_pss.cpp` ahora con 1, 2, 3, 16, 64 y 1000 valores, claves
+geométricas y mitad un valor / mitad distintos (108 casos), también con ASan y UBSan. El adversario
+de McIlroy da lo mismo que antes: congela valores distintos, así que no activa este modo.

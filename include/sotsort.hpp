@@ -5,7 +5,7 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at
 // https://mozilla.org/MPL/2.0/.
 //
-// sotsort.hpp — SotSort v8-r6 (reconstrucción del 2026-11-17, revisiones r2–r6 hasta el 2026-11-19)
+// sotsort.hpp — SotSort v8-r7 (reconstrucción del 2026-11-17, revisiones r2–r7 hasta el 2026-11-20)
 //
 // El código fuente original de la versión 8 se perdió. Este archivo se
 // reescribió a partir de: el pseudocódigo y las demostraciones de v6.1/v8
@@ -1284,7 +1284,7 @@ private:
         while (top > 1) merge_top();
     }
 
-    // ---------------------------------- samplesort estable por páginas (v8-r6)
+    // ------------------- samplesort estable por páginas (v8-r6; grupos de iguales v8-r7)
     // Camino de entrada casi aleatoria en modo bloques (buffer B < n). Una pasada reparte el
     // rango en k grupos: cada elemento va a la página de salida de su grupo (k páginas de P en
     // el buffer); una página llena se vuelca en la primera página del rango ya leída y se anota
@@ -1341,37 +1341,48 @@ private:
     void pss_rec(std::size_t lo, std::size_t hi, int depth, int bad) {
         const std::size_t m = hi - lo, k = pss_k_;
         if (m <= B_ || depth > pss_maxdepth_ || bad > 1) { pss_base(lo, hi); return; }
-        // Separadores: muestra de 8k ordenada en el área de páginas; los k-1 separadores van
-        // al final del buffer (fuera de las páginas).
+        // Separadores: muestra de 8k ordenada en el área de páginas. Árbol implícito (como en
+        // IPS4o): nodo i en spl[i-1], hijos 2i y 2i+1; el recorrido en orden da los separadores
+        // ordenados. Clasificar es bajar log2 kt niveles con b = 2b + (separador <= x).
+        // Grupos de iguales (como IPS4o): si dos separadores elegidos son iguales, el árbol baja a
+        // kt = k/2 hojas y cada separador s_{g-1} tiene su grupo de iguales entre los rangos g-1
+        // y g: 2kt-1 grupos, los impares terminados (todos iguales) y sin recursión.
         T* spl = buf_ + k * pss_P_;
         const std::size_t ns = std::min<std::size_t>(m, 8 * k);
         for (std::size_t i = 0; i < ns; ++i) buf_[i] = a_[lo + static_cast<std::size_t>(rnd() % m)];
         std::sort(buf_, buf_ + ns, [&](const T& x, const T& y) { return lt(x, y); });
-        // Árbol implícito (como en IPS4o): nodo i en spl[i-1], hijos 2i y 2i+1; el recorrido en
-        // orden de los nodos 1..k-1 da los separadores ordenados. Clasificar es bajar log2 k
-        // niveles con b = 2b + (separador <= x), sin saltos que dependan de los datos.
+        bool eq = false;
+        for (std::size_t j = 1; j + 1 < k && !eq; ++j)
+            eq = !lt(buf_[j * ns / k], buf_[(j + 1) * ns / k]);
+        const std::size_t kt = eq ? k / 2 : k;
+        const T* srt = spl + (kt - 1);                          // separadores en orden (solo con eq)
         { std::size_t j = 1;
           auto fill_tree = [&](auto&& self, std::size_t i) -> void {
-              if (i >= k) return;
+              if (i >= kt) return;
               self(self, 2 * i);
-              spl[i - 1] = buf_[j * ns / k]; ++j;
+              spl[i - 1] = buf_[j * ns / kt]; ++j;
               self(self, 2 * i + 1);
           };
-          fill_tree(fill_tree, 1); }
+          fill_tree(fill_tree, 1);
+          if (eq) for (std::size_t i = 1; i < kt; ++i) spl[kt - 1 + i - 1] = buf_[i * ns / kt]; }
+        const std::size_t ng = eq ? 2 * kt - 1 : kt;
         std::size_t start[65];
-        pss_distribute(lo, m, spl, start);
+        pss_distribute(lo, m, spl, start, kt, eq ? srt : nullptr);
         std::size_t big = 0;
-        for (std::size_t j = 0; j < k; ++j) big = std::max(big, start[j + 1] - start[j]);
-        // Pasada mala: el grupo más grande supera m/2; dos seguidas en un camino -> caso base.
+        for (std::size_t j = 0; j < ng; j += eq ? 2 : 1) big = std::max(big, start[j + 1] - start[j]);
+        // Pasada mala: el rango más grande supera m/2; dos seguidas en un camino -> caso base.
         const int nbad = big > m / 2 ? bad + 1 : 0;
-        for (std::size_t j = 0; j < k; ++j) {
+        for (std::size_t j = 0; j < ng; ++j) {
             const std::size_t len = start[j + 1] - start[j];
-            if (len == m) { pss_base(lo, hi); return; }          // sin progreso (muchos iguales)
+            if (eq && (j & 1)) { if (len == m) return; continue; } // grupo de iguales: terminado
+            if (len == m) { pss_base(lo, hi); return; }          // sin progreso
             if (len > 1) pss_rec(lo + start[j], lo + start[j + 1], depth + 1, len > m / 2 ? nbad : 0);
         }
     }
-    void pss_distribute(std::size_t lo, std::size_t m, const T* spl, std::size_t* start) {
-        const std::size_t k = pss_k_, P = pss_P_;
+    // kt hojas del árbol; srt != nullptr activa los grupos de iguales (2kt-1 grupos).
+    void pss_distribute(std::size_t lo, std::size_t m, const T* spl, std::size_t* start,
+                        std::size_t kt, const T* srt) {
+        const std::size_t k = srt ? 2 * kt - 1 : kt, P = pss_P_;
         T* a = a_ + lo;
         T* buf = buf_;
         std::uint16_t* grp = pss_grp_.get();
@@ -1380,8 +1391,9 @@ private:
         std::size_t w = 0;
         for (std::size_t r = 0; r < m; ++r) {
             std::size_t b = 1;                                  // grupo = separadores <= x
-            for (std::size_t lv = k; lv > 1; lv >>= 1) b = 2 * b + static_cast<std::size_t>(!lt(a[r], spl[b - 1]));
-            const std::size_t g = b - k;
+            for (std::size_t lv = kt; lv > 1; lv >>= 1) b = 2 * b + static_cast<std::size_t>(!lt(a[r], spl[b - 1]));
+            std::size_t g = b - kt;
+            if (srt) g = 2 * g - static_cast<std::size_t>(g && !lt(srt[g - 1], a[r]));  // x == s_{g-1}
             buf[g * P + fill[g]++] = std::move(a[r]);
             if (fill[g] == P) {                                 // volcar en la ranura w (ya leída)
                 std::move(buf + g * P, buf + (g + 1) * P, a + w * P);

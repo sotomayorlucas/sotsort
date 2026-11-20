@@ -5,7 +5,7 @@ type: software
 authors:
   - family-names: Sotomayor
     given-names: Lucas
-version: "8-r6"
+version: "8-r7"
 date-released: 2026-11-19
 license: MPL-2.0
 repository-code: "https://github.com/sotomayorlucas/sotsort"
