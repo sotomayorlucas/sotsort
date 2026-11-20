@@ -1,0 +1,275 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage[noend]{algpseudocode}
+\usepackage[hidelinks]{hyperref}
+\newtheorem{lemma}{Lemma}
+\newtheorem{theorem}{Theorem}
+\theoremstyle{remark}
+\newtheorem{remark}{Remark}
+
+\title{A Stable Samplesort with a Bounded Buffer:\\
+Reusing Read Pages and Recording Flush Order}
+\author{Lucas Sotomayor\\\small\texttt{github.com/sotomayorlucas/sotsort}}
+\date{November 2026 \quad (draft)}
+\renewcommand{\lg}{\log_2}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe a $k$-way distribution pass that is \emph{stable}, uses a buffer of
+$B$ elements plus $O(n/P)$ words of tables (with pages of $P\approx B/k$
+elements), and leaves every group contiguous in the input array after the
+pass. Output pages live in the buffer; a full page is flushed to the next page
+of the input that has already been read, and the page's group is recorded.
+Because pages are always flushed to the next slot, slot index equals flush
+order, which is what makes the pass stable. A permutation of slots by cycles
+and a shift of the partial pages finish the pass. With sampled splitters this
+gives a stable MSD samplesort. A pass costs $m\lceil\lg k\rceil$ comparisons and
+at most $4.5m+O(kP)$ element moves. Inside SotSort, with the same memory
+budget that VM-Powersort reserves, it sorts random \texttt{int}s with
+$18.96$ comparisons and $22.10$ moves per element at $n\approx10^6$, against
+$27.76$ and $31.65$ for VM-Powersort. The reuse of consumed blocks with recorded
+order is not new (Polychroniou and Ross; Radsort, for LSD radix sort); what we
+did not find in the literature is its use for a comparison-based, MSD,
+stable distribution with contiguous groups. All counts are machine-independent
+and reproducible from the repository.
+\end{abstract}
+
+\section{Problem}
+
+A stable sort with a buffer of $B\ll n$ elements usually does $\Theta(\lg(n/B))$
+binary passes over the data (stable quicksort with block partitions, or
+mergesort with a bounded buffer). In SotSort's binary stable partition each
+level costs about $1.5+c\lg(m/B)$ moves per element, with $c\approx0.56$--$0.75$
+measured, because blocks partitioned in the buffer must be gathered with
+rotations. Reducing the \emph{number of levels} is the lever. A $k$-way
+distribution does the work of $\lg k$ binary levels in one pass. The unstable
+version is standard (IPS$^4$o~\cite{ips4o}); the question is how to keep it
+stable without $\Theta(n)$ extra space.
+
+\section{The distribution pass}
+
+Let the range be $a[0,m)$, with $k$ groups and pages of $P$ elements.
+The buffer holds $k$ output pages and the $k-1$ splitters. A \emph{slot} is
+$a[sP,(s+1)P)$. Let $w$ count flushed pages and $f_g$ the fill of the output
+page of group $g$. The group of $x$ is the number of splitters $\le x$, so equal
+keys fall in the same group.
+
+\begin{algorithm}[h]
+\caption{Stable paged distribution of $a[0,m)$ into $k$ groups}
+\begin{algorithmic}[1]
+\State $w\gets0$;\quad $f_g\gets0$ for all $g$
+\For{$r=0,\dots,m-1$}
+  \State $g\gets\textsc{Group}(a[r])$;\quad move $a[r]$ to page $g$ of the buffer;\quad $f_g\gets f_g+1$
+  \If{$f_g=P$}
+     \State move page $g$ to slot $w$;\quad $\mathit{grp}[w]\gets g$;\quad $w\gets w+1$;\quad $f_g\gets0$
+  \EndIf
+\EndFor
+\State \textbf{Phase 1:} move the partial pages, in group order, to $a[wP,m)$
+\State \textbf{Phase 2:} permute slots $0..w-1$ by group, stably, by cycles (one page of buffer)
+\State \textbf{Phase 3:} move the partials to the buffer; for $g=k-1$ down to $0$, shift the
+       slots of group $g$ right by $D_g=\sum_{h<g}f_h$ and put the partial of $g$ after them
+\end{algorithmic}
+\end{algorithm}
+
+\begin{lemma}[a free slot exists]\label{l:free}
+When a page is flushed with $w=s$, slot $s$ has been read completely and holds no flushed page.
+\end{lemma}
+\begin{proof}
+At that moment $q=sP+\sum_g f_g$ elements have been read, and some $f_g=P$, so
+$q\ge(s+1)P$. Slots $0..s-1$ hold the flushed pages; slot $s$ lies in the read
+prefix and is not one of them.
+\end{proof}
+
+\begin{lemma}[slot index is flush order]\label{l:order}
+Within each group, the stable order of its elements is: its flushed pages by
+increasing slot index, then its partial page.
+\end{lemma}
+\begin{proof}
+Each output page receives its elements in reading order. Pages are flushed to
+slot $w$ and $w$ grows by one, so a page flushed earlier has a smaller index.
+The partial page holds the last elements read for that group.
+\end{proof}
+
+\begin{lemma}[final free space]\label{l:space}
+At the end, $a[wP,m)$ has exactly $\sum_g f_g$ positions, all read and none flushed.
+\end{lemma}
+\begin{proof}
+$m=wP+\sum_g f_g$.
+\end{proof}
+
+\begin{theorem}
+After phases 1--3, group $g$ occupies $[F_gP+D_g,\;F_{g+1}P+D_{g+1})$, where
+$F_g$ is the number of full pages of groups $<g$, and the order within each
+group is the input order.
+\end{theorem}
+\begin{proof}
+Phase 1 is possible by Lemma~\ref{l:space}. In phase 2 a slot of group $g$ goes
+to slot $F_g+e$, where $e$ is the number of earlier slots of group $g$; this is a bijection on
+$0..w-1$ that preserves the order of slots inside a group, and it is applied by
+following cycles with one page of buffer. In phase 3, since $D_g\le D_{g+1}$,
+moving groups from right to left never overwrites anything not yet moved. The
+order claim is Lemma~\ref{l:order}.
+\end{proof}
+
+Only the group of each slot must be recorded ($\lceil\lg k\rceil$ bits); our
+implementation uses 2 bytes for the group and 4 for the cycle source, i.e.\ 6 bytes
+per slot, $O(n/P)$ in total.
+
+\paragraph{Cost of a pass.}
+Comparisons: $m\lceil\lg k\rceil$ (for $k$ a power of two, exactly $m\lg k$).
+Moves: $m$ to the buffer, $wP$ to flush, $\sum f$ in phase 1, at most $(M+C)P$ in
+phase 2 with $M\le w$ misplaced slots and $C\le M/2$ cycles, then $\sum f$ twice and
+at most $m$ for the shift in phase 3. Total $\le4m+3kP$ in the typical case and
+$\le4.5m+3kP$ in the worst case of phase 2. One pass replaces $\lg k$ binary
+levels; with $k=64$ that is about $0.7$ moves per binary level.
+
+\paragraph{Classification without branches.}
+The $k-1$ splitters form an implicit tree (node $i$ has children $2i$ and $2i+1$;
+an in-order walk gives sorted order), and the group is $b-k$ after $\lg k$ steps of
+$b\gets2b+[\text{splitter}_b\le x]$, as in IPS$^4$o's decision tree~\cite{ips4o}.
+This changes no count.
+
+\section{The sort}
+
+Splitters: $8k$ random samples, sorted in the page area; $k-1$ equidistant ones
+go to the tree. Ranges of size $\le B$ go to the base case, SotSort's stable
+quicksort. Two safeguards bound bad inputs:
+\begin{itemize}
+\item a pass is \emph{bad} if its largest group exceeds $m/2$; two bad passes in a row on a
+recursion path send the range to the base case; a pass that makes no progress
+(one group holds the whole range) does so immediately;
+\item depth is capped at $2\log_k n+2$.
+\end{itemize}
+The base case tolerates at most $4$ bad partitions per path before its merge
+fallback (it previously tolerated $\lg n$). Hence the worst case stays
+$O(n\log n)$ comparisons and moves; the constant is measured below, not proved tight.
+
+In SotSort (version 8-r6) the pass is used only with a bounded block buffer
+($2B<n$), for $k\in\{64,32,16,8\}$, the largest with $P\ge64$ and tables within
+the plan's table reserve. Every byte is charged to the same budget as the rest
+of the sort.
+
+\section{Counts}
+
+A \emph{move} is a move-assignment or move-construction of an element;
+comparisons are calls to the comparator. Counts come from the benchmark
+harness of VM-Powersort~\cite{vmps}, with SotSort given the memory VM-Powersort reserves for the
+same input; the harness verifies every output. $S$ is the harness's presortedness parameter: $S=2$ is essentially random input, larger $S$ means longer presorted runs.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+input & VM-Powersort cmp / mov & SotSort 8-r6 cmp / mov \\
+\midrule
+\texttt{int}, $S=2$, $n\approx10^6$     & 27.76 / 31.65 & 18.96 / 22.10 \\
+\texttt{fastarr}, $S=2$, $n\approx10^6$ & 28.09 / 32.01 & 19.10 / 17.39 \\
+\texttt{int}, $S=2$, $n\approx10^7$     & 26.07 / 29.90 & 21.87 / 23.50 \\
+\bottomrule
+\end{tabular}
+\caption{Comparisons and moves per element, same memory.}
+\end{table}
+
+Before the paged pass, SotSort's moves were $37.74$ (\texttt{int}, $10^6$) and $48.18$
+($10^7$). Across the 12 cells of the harness SotSort is never above VM-Powersort in
+comparisons by more than $0.02$ per element. With $S\ge100$ the input takes SotSort's
+run-merging path, so the pass is not involved; there, with an $n/2$ buffer,
+copy-Powersort still makes fewer moves for $S\ge1000$.
+
+\paragraph{Ablation over $k$} (prototype, 8-byte counted type, VM-Powersort's budget,
+random input; moves / comparisons per element).
+\begin{center}
+\begin{tabular}{lccccc}
+\toprule
+$n$ & binary (old) & $k=8$ & $k=16$ & $k=32$ & $k=64$\\
+\midrule
+$10^6$ & 38.46 / 19.61 & 26.76 / 19.69 & 24.19 / 19.64 & 23.81 / 19.59 & 22.95 / 19.64\\
+$10^7$ & 48.32 / 22.94 & 31.74 / 23.15 & 29.04 / 23.11 & 26.36 / 23.07 & 26.30 / 23.05\\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\paragraph{Adversary.}
+A lazy McIlroy adversary~\cite{mcilroy} run against the prototype, with a fixed seed and
+VM-Powersort's budget, at $n=10^6$: with only the depth cap it forced $95.4$
+comparisons and $123.3$ moves per element. With the bad-pass rule and the base
+case's budget of $4$: $26.13$ comparisons and $34.06$ moves. The constructed input
+depends on the seed; with another seed the same input costs $17.37$ / $17.74$.
+SotSort accepts a per-call seed. VM-Powersort, as a mergesort, has no such weakness.
+
+\paragraph{Verification.}
+The pass was checked exhaustively against \texttt{std::stable\_sort} for all inputs
+with keys in $\{0..k-1\}$, $k=2..4$, $P=1..3$, $m\le9$ ($1\,140\,207$ cases), and
+the sort on 81 adversarial families and on 112-byte types and \texttt{std::string},
+under ASan, UBSan and TSan.
+
+\paragraph{Time.}
+Indicative only, ratio to VM-Powersort at $S=2$ on two machines (cloud / desktop):
+\texttt{int} 0.72 / 0.78, \texttt{ptr} 0.82 / 0.86, \texttt{fastarr} 0.73 / 0.73,
+\texttt{arr} 0.55 / 0.57. Repeated runs vary by about $\pm10$--$15\%$.
+
+\section{Prior work}
+
+The search covered general search engines and the related-work sections of the papers
+below; it did not cover patents or all papers citing IPS$^4$o. We may have missed work.
+
+\begin{itemize}
+\item \textbf{Polychroniou and Ross}~\cite{pr14}, \S3.2.3, ``out-of-cache, in-place,
+list of blocks'': each partition is a linked list of single-destination blocks
+written into input space already read. This is the oldest instance of the mechanism we
+found. They do not discuss the stability of that variant, state that in-place
+partitioning is not stable, and none of their sorts is in-place, stable and
+block-based at once.
+\item \textbf{Radsort} (Clausecker and Schintke)~\cite{radsort}: a stable LSD radix sort that
+reuses consumed blocks and tracks the block permutation in arrays, explicitly
+comparing its design to Polychroniou and Ross; an MSD version is left as future
+work. This is the closest prior work; our pass uses the same core mechanism.
+\item \textbf{IPS$^4$o}~\cite{ips4o}: flushes full buffer blocks into the input but,
+to stay in-place, does not record which bucket each flushed block belongs to;
+it is unstable. Recording the group (with $O(n/P)$ words) is precisely what buys stability.
+\item \textbf{Franceschini, Muthukrishnan and P\u{a}tra\c{s}cu}~\cite{fmp07}: merging $k$ sorted
+lists with $\alpha n$ free words by writing output into free blocks and reclaiming blocks freed
+in the inputs: the same reuse idea, for merging.
+\item \textbf{Katajainen and Pasanen}~\cite{kp92,kp94}: stable partitioning and stable
+multiset sorting in minimum space, quicksort with median pivots; theoretical.
+\item \textbf{Logsort}~\cite{logsort}: a practical stable in-place 2-way quicksort.
+\item External-memory distribution sort writes each bucket in blocks~\cite{vitter};
+it does not reuse the input array.
+\end{itemize}
+
+What we claim as new is narrow: a comparison-based MSD samplesort whose distribution
+pass is stable, reuses read pages, and leaves groups contiguous after each pass, with a
+bounded buffer. We have not found it, and S.~Wild did not know of one offhand.
+
+\section*{Acknowledgements}
+Sebastian Wild advised focusing on robust algorithmic ideas and operation counts rather
+than running time. Errors are mine.
+
+\begin{thebibliography}{9}
+\bibitem{ips4o} M.~Axtmann, S.~Witt, D.~Ferizovic, P.~Sanders. Engineering in-place
+(shared-memory) sorting algorithms. \emph{ACM Trans.\ Parallel Comput.} 9(1), 2022.
+Earlier version: In-place parallel super scalar samplesort (IPS$^4$o), ESA 2017.
+\bibitem{radsort} R.~Clausecker, F.~Schintke. Parallel $O(\sqrt n)$ overhead LSD radix sort.
+arXiv:2607.05302, 2026.
+\bibitem{pr14} O.~Polychroniou, K.~A.~Ross. A comprehensive study of main-memory partitioning
+and its application to large-scale comparison- and radix-sort. SIGMOD 2014, 755--766.
+\bibitem{fmp07} G.~Franceschini, S.~Muthukrishnan, M.~P\u{a}tra\c{s}cu. Radix sorting with no
+extra space. ESA 2007, LNCS 4698. arXiv:0706.4107.
+\bibitem{kp92} J.~Katajainen, T.~Pasanen. Stable minimum space partitioning in linear time.
+\emph{BIT} 32(4):580--585, 1992.
+\bibitem{kp94} J.~Katajainen, T.~Pasanen. Sorting multisets stably in minimum space.
+\emph{Acta Informatica} 31(4):301--313, 1994.
+\bibitem{logsort} aphitorite. Logsort. \url{https://github.com/aphitorite/Logsort}.
+\bibitem{vitter} J.~S.~Vitter. External memory algorithms and data structures: dealing with
+massive data. \emph{ACM Comput.\ Surv.} 33(2), 2001.
+\bibitem{vmps} F.~Moltmann, T.-V.~Nakajima, S.~Wild. Virtual-Memory Powersort. ESA 2026,
+LIPIcs 388, 14:1--14:17. Harness use as in L.~Sotomayor, SotSort, arXiv:2611.24786.
+\bibitem{mcilroy} M.~D.~McIlroy. A killer adversary for quicksort. \emph{Softw.\ Pract.\ Exper.}
+29(4):341--344, 1999.
+\end{thebibliography}
+\end{document}
