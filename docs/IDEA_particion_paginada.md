@@ -382,8 +382,33 @@ Otros:
   de bits; inestable.
 - VM-Powersort: páginas para mezclas.
 
-Conclusión honesta: la idea no es nueva en su núcleo. Reusar bloques consumidos y anotar a qué
-grupo pertenece cada uno está en Radsort (k vías, radix LSD); agrupar en bloques de un tipo y
+**Búsqueda a fondo (20 nov 2026).** Wild (respuesta del 20 nov): no conoce de memoria una
+versión MSD por comparaciones. Lo encontrado:
+- **Polychroniou y Ross (SIGMOD 2014), §3.2.3, "out-of-cache in-place, list of blocks":** cada
+  partición es una lista enlazada de bloques de un solo destino; los bloques llenos ocupan espacio
+  de la entrada ya leído (antes se apartan P·B tuplas del comienzo). El orden de cada partición
+  queda en la lista. El paper no discute la estabilidad de esta variante; afirma en general que
+  el particionado in-place no es estable, y ninguno de sus sorts combina in-place, estable y por
+  bloques. Radsort dice que su diseño es parecido a este, con arreglos en vez de listas.
+  **Es el antecedente más viejo del mecanismo** (reusar espacio leído + registrar el orden).
+- **Franceschini, Muthukrishnan y Pătraşcu (ESA 2007), "Radix sorting with no extra space":** su
+  mezcla de k listas con αn palabras libres escribe la salida en bloques libres y toma bloques que
+  se liberan en las listas de entrada. Mismo truco de reuso, para mezclar.
+- **IPS4o:** vuelca los bloques en la entrada ya distribuida y explícitamente *no* registra a qué
+  bucket pertenece cada bloque, para ser in-place; luego permuta. Por eso no es estable. Registrar
+  el bucket (O(n/b) palabras) es justamente lo que da la estabilidad.
+- **Katajainen y Pasanen (1992, 1994):** partición estable y sort de multiconjuntos estable en
+  espacio mínimo; teóricos, quicksort con mediana.
+- **Memoria externa:** distribution sort escribe cada bucket en bloques (clásico; Vitter). Las
+  implementaciones con listas de bloques por bucket son estables por construcción, pero no
+  trabajan sobre el mismo arreglo.
+- No encontré: un samplesort por comparaciones, MSD, estable, que reuse el espacio leído y deje los
+  grupos contiguos en cada pasada. Búsqueda en buscadores generales; no revisé bases de patentes
+  ni todas las citas de IPS4o.
+
+Conclusión honesta: la idea no es nueva en su núcleo. Reusar espacio ya leído y registrar el orden
+de los bloques está en Polychroniou y Ross (listas de bloques, 2014) y en Radsort (k vías, radix
+LSD, con arreglos); agrupar en bloques de un tipo y
 reordenarlos por ciclos con el orden registrado está en Logsort (2 vías, comparaciones).
 Lo presentable es la combinación (samplesort de k vías por comparaciones, MSD con grupos
 contiguos en cada pasada, dentro de un sort adaptativo con memoria acotada) y las mediciones,
