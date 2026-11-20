@@ -159,7 +159,7 @@ of the sort.
 A \emph{move} is a move-assignment or move-construction of an element;
 comparisons are calls to the comparator. Counts come from the benchmark
 harness of VM-Powersort~\cite{vmps}, with SotSort given the memory VM-Powersort reserves for the
-same input; the harness verifies every output. $S$ is the harness's presortedness parameter: $S=2$ is essentially random input, larger $S$ means longer presorted runs.
+same input; the harness verifies every output. $S$ is the average length of the presorted runs ($S=2$ is near-random input).
 
 \begin{table}[h]
 \centering
@@ -176,8 +176,9 @@ input & VM-Powersort cmp / mov & SotSort 8-r6 cmp / mov \\
 \end{table}
 
 Before the paged pass, SotSort's moves were $37.74$ (\texttt{int}, $10^6$) and $48.18$
-($10^7$). Across the 12 cells of the harness SotSort is never above VM-Powersort in
-comparisons by more than $0.02$ per element. With $S\ge100$ the input takes SotSort's
+($10^7$). Across the 12 cells of the harness (random keys with presorted runs) SotSort is never above
+VM-Powersort in comparisons by more than $0.02$ per element; inputs with many equal keys are
+not in the harness (see below). With $S\ge100$ the input takes SotSort's
 run-merging path, so the pass is not involved; there, with an $n/2$ buffer,
 copy-Powersort still makes fewer moves for $S\ge1000$.
 
@@ -201,6 +202,30 @@ comparisons and $123.3$ moves per element. With the bad-pass rule and the base
 case's budget of $4$: $26.13$ comparisons and $34.06$ moves. The constructed input
 depends on the seed; with another seed the same input costs $17.37$ / $17.74$.
 SotSort accepts a per-call seed. VM-Powersort, as a mergesort, has no such weakness.
+
+\paragraph{Against Logsort.}
+Logsort~\cite{logsort} is the closest stable in-place quicksort. We counted it with the same
+element type (16 bytes) and the same memory as SotSort, with its \texttt{memcpy} calls replaced
+by element-wise assignments so that moves are counted
+(\texttt{bench/cost/logsort\_counts.cpp}). Comparisons / moves per element, $n=10^7$:
+\begin{center}
+\begin{tabular}{lcccc}
+\toprule
+ & \multicolumn{2}{c}{16\,KB buffer} & \multicolumn{2}{c}{VM-Powersort budget (2\,MB)}\\
+input & Logsort & SotSort & Logsort & SotSort\\
+\midrule
+random            & 23.52 / 99.24 & 22.95 / 111.65 & 23.42 / 73.22 & 22.94 / 22.94\\
+16 distinct keys  & 6.18 / 30.67  & 5.19 / 44.00   & 6.13 / 28.43  & 14.01 / 7.95\\
+interleaved halves& 16.08 / 71.50 & 20.68 / 35.45  & 16.01 / 51.77 & 20.72 / 18.27\\
+\bottomrule
+\end{tabular}
+\end{center}
+With the larger budget the paged pass makes SotSort's moves 3--6 times lower. With a 16\,KB
+buffer, where the pass does not run, Logsort makes fewer moves on random input at $10^7$
+($99$ against $112$; at $10^6$ SotSort makes fewer, $73$ against $78$). The pass has a cost on
+inputs with many equal keys: with 16 distinct keys its comparisons rise from $5.2$ (without
+the pass) to $14.0$, because equal keys are not given groups of their own, as IPS$^4$o
+does~\cite{ips4o}; moves fall from $25.7$ to $8.0$. This is the main open problem of the pass.
 
 \paragraph{Verification.}
 The pass was checked exhaustively against \texttt{std::stable\_sort} for all inputs
@@ -264,9 +289,9 @@ extra space. ESA 2007, LNCS 4698. arXiv:0706.4107.
 \emph{BIT} 32(4):580--585, 1992.
 \bibitem{kp94} J.~Katajainen, T.~Pasanen. Sorting multisets stably in minimum space.
 \emph{Acta Informatica} 31(4):301--313, 1994.
-\bibitem{logsort} aphitorite. Logsort. \url{https://github.com/aphitorite/Logsort}.
+\bibitem{logsort} aphitorite. Logsort. \url{https://github.com/aphitorite/Logsort}, commit 76a5e32.
 \bibitem{vitter} J.~S.~Vitter. External memory algorithms and data structures: dealing with
-massive data. \emph{ACM Comput.\ Surv.} 33(2), 2001.
+massive data. \emph{ACM Comput.\ Surv.} 33(2):209--271, 2001.
 \bibitem{vmps} F.~Moltmann, T.-V.~Nakajima, S.~Wild. Virtual-Memory Powersort. ESA 2026,
 LIPIcs 388, 14:1--14:17. Harness use as in L.~Sotomayor, SotSort, arXiv:2611.24786.
 \bibitem{mcilroy} M.~D.~McIlroy. A killer adversary for quicksort. \emph{Softw.\ Pract.\ Exper.}

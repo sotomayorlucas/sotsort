@@ -86,7 +86,12 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 - The proofs are hand-written (Spanish, `docs/`); nothing is machine-checked.
 - The paged samplesort only runs with a bounded block buffer; in O(1) mode its page tables would not
   fit, so the quicksort runs. Its worst case is bounded by O(n log n) but measured, not proved tight.
-- Logsort, the closest in-place stable quicksort, is not in the comparisons.
+- Against Logsort (operation counts only, `bench/cost/logsort_counts.cpp`, same element type and
+  memory): with a 16 KB buffer Logsort makes fewer moves than SotSort on random input at n = 10^7
+  (99 vs 112 per element) and with many equal keys; with VM-Powersort's budget SotSort makes 3–6
+  times fewer moves. Timings against Logsort are not measured.
+- With a bounded buffer the paged samplesort makes about 14 comparisons per element on inputs with
+  few distinct keys (16 keys), against about 5 without it: equal keys have no groups of their own.
 
 ## Layout
 

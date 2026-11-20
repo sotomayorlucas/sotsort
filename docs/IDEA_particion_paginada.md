@@ -422,3 +422,19 @@ citando a los dos.
 4. Integrar al quicksort y medir conteos (no tiempos) en el harness de VM-Powersort.
 5. Seguir buscando antecedentes (memoria externa, distribution sort estable) antes de
    presentar la idea como propia.
+
+## 2k. Conteos contra Logsort (20 nov 2026)
+
+`bench/cost/logsort_counts.cpp` (Logsort de aphitorite, commit 76a5e32, en `bench/cost/logsort/`
+con los `memcpy` reemplazados por asignaciones para contar). Tipo de 16 bytes; Logsort con bLen =
+buffer propio de SotSort en modo O(1) (1024 elementos, 16 KB) y con el presupuesto de VM-Powersort.
+Resultados completos en `bench/cost/logsort_counts_1e6.txt` y `_1e7.txt`.
+
+- Con presupuesto VM, aleatoria, 10^7: Logsort 23.42 / 73.22, SotSort 22.94 / 22.94 (cmp / mov).
+- Con 16 KB, aleatoria, 10^7: Logsort 23.52 / 99.24, SotSort 22.95 / 111.65. En 10^6 gana
+  SotSort (78.49 contra 73.18 movimientos). Con muchas claves iguales Logsort mueve menos.
+- **Costo del paginado con iguales:** dup16 en 10^7 pasa de 5.19 / 25.72 (sin paginado) a
+  14.01 / 7.95. Falta darle grupo propio a los iguales (como IPS4o).
+- No es del paginado: con presupuesto, runs63 y asc1pct hacen 17.7 y 16.8 comparaciones en 10^7
+  contra 2.2 y 1.8 en modo O(1); pasa igual con `-DSOT_NO_PAGED_SAMPLE`. Es el ruteo con buffer.
+- interl (mitades intercaladas): SotSort hace ~20.7 comparaciones contra ~16 de Logsort.
