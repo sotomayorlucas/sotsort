@@ -24,7 +24,7 @@ sot::stable_sort(v.data(), v.size(), [](const Record& a, const Record& b) { retu
 
 This is version 8-r7. The technical report (`docs/sotsort_report.pdf`, revision 6; arXiv:2611.24786
 has earlier revisions) describes it. Commits: `c16d43f` (8-r), `b9e0df1` (8-r5), `ef55874` (8-r6); 8-r7 adds
-equality groups to the paged samplesort.
+equality groups to the paged samplesort and galloping to the paged run merge.
 Development history and design notes (Spanish): `docs/RECONSTRUCCION.md`; the paged partition and
 samplesort, with proofs, tests and prior art: `docs/IDEA_particion_paginada.md`.
 
@@ -96,8 +96,8 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 - Skewed keys (Zipf-like) with a bounded buffer: 7.1 comparisons per element against 4.9 without
   the paged samplesort and 5.7 for Logsort (n = 10^7); moves are 4.4 against 21.5 and 24.5.
 - With a bounded buffer, nearly sorted inputs with sparse disorder (1 in 63 or 1% of elements out of
-  place) make 17–18 comparisons per element at n = 10^7 against about 2 in O(1) mode. This predates
-  8-r6 (same with `-DSOT_NO_PAGED_SAMPLE`); it is the routing with a buffer.
+  place) make 7.1 and 4.7 comparisons per element at n = 10^7 (17.7 and 16.8 before 8-r7, when the
+  paged run merge did not gallop), against about 2 in O(1) mode, which pays 31–36 moves instead of 20.
 
 ## Layout
 

@@ -1005,6 +1005,31 @@ private:
         x1 = x; y1 = y;
         return o1;
     }
+    // v8-r7: mezcla con galope del camino paginado (como merge_left_buf con mode 2, pero sin
+    // cruzar bordes de página): vuelve cuando se acaba la página de X, la de Y o la de salida.
+    // El estado (contadores y si se está galopando) sigue de una página a la siguiente. Los
+    // galopes se cortan en el borde de página; un galope cortado no cuenta como corto.
+    T* merge_page_gallop(T*& x1, T* x2, T*& y1, T* y2, T* o, T* o2, std::size_t& cx, std::size_t& cy, bool& gal) {
+        T *p = x1, *q = y1;
+        while (p < x2 && q < y2 && o < o2) {
+            if (!gal) {
+                if (lt(*q, *p)) { *o++ = std::move(*q++); ++cy; cx = 0; }
+                else            { *o++ = std::move(*p++); ++cx; cy = 0; }
+                if (std::max(cx, cy) >= MG) gal = true;
+                continue;
+            }
+            const std::size_t lim = std::min(static_cast<std::size_t>(x2 - p), static_cast<std::size_t>(o2 - o));
+            const std::size_t k = detail::gallop(lim, [&](std::size_t i) { return !lt(*q, p[i]); });
+            o = std::move(p, p + k, o); p += k;
+            if (p == x2 || o == o2) break;
+            const std::size_t lim2 = std::min(static_cast<std::size_t>(y2 - q), static_cast<std::size_t>(o2 - o));
+            const std::size_t k2 = detail::gallop(lim2, [&](std::size_t i) { return lt(q[i], *p); });
+            o = std::move(q, q + k2, o); q += k2;
+            if (k < MG && k2 < MG && k2 < lim2) { gal = false; cx = cy = 0; }
+        }
+        x1 = p; y1 = q;
+        return o;
+    }
     // Mezcla hacia atrás de X (aparte) e Y, dejando el resultado en Y[0, lx+ly): Y tiene lugar.
 #if defined(__GNUC__) && !defined(__clang__)
     __attribute__((flatten))
@@ -1042,10 +1067,42 @@ private:
             std::size_t ix = 0, iy = 0, rx = lx, ry = ly;
             T *x1 = base(xs[0]), *x2 = x1 + std::min(rx, P), *y1 = base(ys[0]), *y2 = y1 + std::min(ry, P);
             T *o1 = nullptr, *o2 = nullptr;
+            // v8-r7: con datos adaptativos, galope (empieza galopando: si X entero o un prefijo
+            // largo va antes de Y[0], se saltea con O(log) comparaciones por página).
+            // Sonda de la mezcla sin páginas (8 muestras de X ubicadas en Y; galope si la cota
+            // da rachas de 8 o más en promedio), acá para todos los tipos: con runs aleatorios
+            // galopar sumaba ~0.15 comparaciones por elemento y la sonda lo apaga.
+            bool gl = adaptive_ && gallop_;
+            {
+                if (gl) {
+                    if (lx + ly < 256) gl = false;
+                    else {
+                        auto atY = [&](std::size_t t) -> const T& { return base(ys[t / P])[t % P]; };
+                        auto atX = [&](std::size_t t) -> const T& { return base(xs[t / P])[t % P]; };
+                        std::size_t prevy = 0, prevx = 0, sw = 0;
+                        for (std::size_t i = 1; i <= 9; ++i) {
+                            std::size_t px = i < 9 ? i * lx / 9 : lx, py = ly;
+                            if (i < 9) {                        // primer índice de Y que no va antes de X[px]
+                                std::size_t l2 = prevy, h2 = ly; const T& v = atX(px);
+                                while (l2 < h2) { std::size_t md = l2 + (h2 - l2) / 2; if (lt(atY(md), v)) l2 = md + 1; else h2 = md; }
+                                py = l2;
+                            }
+                            sw += 2 * std::min(px - prevx, py - prevy) + 1;
+                            prevx = px; prevy = py;
+                        }
+                        gl = sw * 8 <= lx + ly;
+                    }
+                }
+            }
+            std::size_t gcx = 0, gcy = 0; bool gal = true;
             while (rx || ry) {
                 if (o1 == o2) { std::uint32_t ph = pop(); pr_tmp_.push_back(ph); o1 = base(ph); o2 = o1 + P; }
                 std::size_t k = static_cast<std::size_t>(o2 - o1);
-                if (rx && ry) {
+                if (rx && ry && gl) {
+                    T *xb = x1, *yb = y1;
+                    o1 = merge_page_gallop(x1, x2, y1, y2, o1, o2, gcx, gcy, gal);
+                    rx -= static_cast<std::size_t>(x1 - xb); ry -= static_cast<std::size_t>(y1 - yb);
+                } else if (rx && ry) {
                     k = std::min(k, std::min(static_cast<std::size_t>(x2 - x1), static_cast<std::size_t>(y2 - y1)));
                     T *xb = x1, *yb = y1;
                     o1 = merge_run_k(x1, y1, o1, k);

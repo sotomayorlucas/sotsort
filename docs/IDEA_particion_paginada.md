@@ -457,3 +457,22 @@ elimina duplicados de la muestra; no lo hice).
 Tests: suite completa; `tests/test_pss.cpp` ahora con 1, 2, 3, 16, 64 y 1000 valores, claves
 geométricas y mitad un valor / mitad distintos (108 casos), también con ASan y UBSan. El adversario
 de McIlroy da lo mismo que antes: congela valores distintos, así que no activa este modo.
+
+## 2m. Galope en la mezcla paginada de runs (v8-r7)
+
+Causa del hueco de 2k: con buffer acotado, runs63 y asc1pct van a `paged_natural_merge_sort`
+(esquema de VM-Powersort), cuya mezcla página a página no galopaba; en modo O(1) la mezcla común
+sí galopa. Arreglo: `merge_page_gallop`, galope estilo Timsort (umbral MG = 7) dentro de cada
+página de X, de Y y de salida; el estado sigue de una página a la siguiente y un galope cortado
+por el borde no cuenta como corto. Se decide por mezcla con la sonda de la mezcla común (8
+muestras de X ubicadas en Y), para todos los tipos: sin sonda, en el harness de VM-Powersort
+(tipo envoltorio no trivial, así que la sonda de la mezcla común no corre) S = 1000 pasaba de
+9.71 a 9.86 comparaciones y quedaba arriba de VM-Powersort (9.72).
+
+Conteos (tipo de 16 bytes, presupuesto VM, n = 10^7, cmp / mov): runs63 17.70 / 20.21 → 7.13 / 20.21;
+asc1pct 16.76 / 19.21 → 4.74 / 19.21; tail10 3.99 → 4.12; el resto igual. Sin sonda daban 5.40 y
+4.34: la sonda cuesta algo en estas entradas. Harness de VM-Powersort, int, n ≤ 10^6, totales/10^6
+(`bench/vmpowersort/results-r7`): comparaciones r6 → r7 en S = 100: 13.09 → 13.18; 1000: 9.71 →
+9.74 (VM-PS 9.72); 10000: 6.78 → 6.74; las demás iguales; asignaciones iguales en todas.
+Tests: suite completa, `make sanitize`, y `logsort_counts.cpp` con ASan/UBSan en n = 2·10^5 y 10^6
+(9 distribuciones, salida ordenada y estable).
