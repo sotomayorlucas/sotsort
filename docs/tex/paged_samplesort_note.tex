@@ -149,19 +149,31 @@ The base case tolerates at most $4$ bad partitions per path before its merge
 fallback (it previously tolerated $\lg n$). Hence the worst case stays
 $O(n\log n)$ comparisons and moves; the constant is measured below, not proved tight.
 
-In SotSort (version 8-r6; equality groups in 8-r7) the pass is used only with a bounded block buffer
+In SotSort (version 8-r8) the pass is used only with a bounded block buffer
 ($2B<n$), for $k\in\{64,32,16,8\}$, the largest with $P\ge64$ and tables within
 the plan's table reserve. Every byte is charged to the same budget as the rest
 of the sort.
 
-\paragraph{Equal keys.} If two of the chosen splitters are equal, the pass switches to a tree
-of $k/2$ leaves and gives each splitter $s$ a group of its own for the keys equal to $s$, placed
-between the ranges below and above $s$, as IPS$^4$o does~\cite{ips4o}: $k-1$ groups in all,
-still $\lg k$ comparisons per element (one tree level fewer, plus a test of $x$ against the splitter that bounds its range from below),
-and the equality groups are finished and not recursed on. The pass is the same, with a
-different group function, so Lemmas~\ref{l:free}--\ref{l:space} still hold. Without this, 16
-distinct keys cost $14.0$ comparisons per element at $n=10^7$ (against $5.2$ without the pass);
-with it, $6.0$, and moves fall from $8.0$ to $3.9$.
+\paragraph{Equal keys.} Equal keys get groups of their own, as in IPS$^4$o~\cite{ips4o}: with a
+tree of $k_t\le k/2$ leaves, each splitter $s$ has a group for the keys equal to $s$, placed
+between the ranges below and above $s$ ($2k_t-1$ groups, $\lg k_t+1$ comparisons per element);
+the equality groups are finished and not recursed on. The pass is the same, with a different
+group function, so Lemmas~\ref{l:free}--\ref{l:space} still hold. The splitters and $k_t$ are
+chosen from the sample. The sorted sample is compressed into distinct values with counts; for
+each $k_t\in\{k/2,k/4,\dots,2\}$ the splitters are the distinct values at the equidistant
+positions, and the places left over go to the most frequent remaining values. The choice
+minimises an estimate of comparisons per element,
+$\lg k_t+1+u\cdot r$, where $u$ is the fraction of the sample equal to no splitter and
+$r=\bigl(\lg\max(1,(D-\#\text{splitters})/k_t)+2\bigr)(1+1/\lg k)$ estimates what an unfinished
+element still costs; $D$ is the number of distinct keys estimated from the sample (Chao1).
+The plain pass costs $\lg k+r$ with no splitters removed. This is a heuristic: every choice
+sorts correctly. With 16 distinct keys at $n=10^7$ the pass costs $5.0$ comparisons and $3.9$
+moves per element ($14.0$ and $8.0$ without equality groups).
+
+\paragraph{Sorted ranges.} After a pass, a range that is already in non-decreasing order is not
+recursed on, and a strictly decreasing one is reversed. The check stops at the first descent,
+and there are at most $k$ ranges per pass. Since the pass is stable, interleaved sorted
+sequences whose values separate come out sorted after one pass.
 
 \section{Counts}
 
@@ -224,19 +236,20 @@ by element-wise assignments so that moves are counted
 input & Logsort & SotSort & Logsort & SotSort\\
 \midrule
 random            & 23.52 / 99.24 & 22.95 / 111.65 & 23.42 / 73.22 & 22.94 / 22.94\\
-16 distinct keys  & 6.18 / 30.67  & 5.19 / 44.00   & 6.13 / 28.43  & 6.00 / 3.94\\
-$\sqrt n$ distinct keys & 14.12 / 76.13 & 12.85 / 97.10 & 14.02 / 51.79 & 12.91 / 9.02\\
-Zipf-like keys    & 5.74 / 27.52  & 4.94 / 41.01   & 5.70 / 24.53  & 7.09 / 4.36\\
-interleaved halves& 16.08 / 71.50 & 20.68 / 35.45  & 16.01 / 51.77 & 20.72 / 18.27\\
+16 distinct keys  & 6.18 / 30.67  & 5.00 / 46.11   & 6.13 / 28.43  & 5.00 / 3.94\\
+$\sqrt n$ distinct keys & 14.12 / 76.13 & 12.64 / 96.30 & 14.02 / 51.79 & 12.56 / 8.37\\
+Zipf-like keys    & 5.74 / 27.52  & 4.35 / 40.02   & 5.70 / 24.53  & 5.28 / 4.70\\
+interleaved halves& 16.08 / 71.50 & 12.03 / 24.62  & 16.01 / 51.77 & 7.14 / 4.06\\
 \bottomrule
 \end{tabular}
 \end{center}
-With the larger budget, on the inputs where the pass runs, SotSort makes 3--7 times fewer
-moves than Logsort. With a 16\,KB buffer, where the pass does not run, Logsort makes fewer moves
-on random input at $10^7$ ($99$ against $112$; at $10^6$ SotSort makes fewer, $73$ against $78$)
-and on inputs with many equal keys. Zipf-like keys remain a weak case for comparisons:
-$7.1$ against $4.9$ without the pass, because only values that show up as repeated splitters get
-their own group. On interleaved halves SotSort makes more comparisons in both settings.
+With the larger budget SotSort makes 3--13 times fewer moves than Logsort on these inputs and
+no more comparisons. With a 16\,KB buffer, where the pass does not run, Logsort makes fewer
+moves on random input at $10^7$ ($99$ against $112$; at $10^6$ SotSort makes fewer, $73$ against
+$78$) and on inputs with many equal keys. Weak cases that remain: on Zipf-like keys the pass
+makes $5.3$ comparisons against $4.4$ for SotSort's quicksort (which pays $40$ moves), and an
+input with one value on 40\% of the positions and distinct keys elsewhere costs $15.5$
+comparisons and $18.2$ moves. No adversary was built against the splitter choice.
 
 \paragraph{Verification.}
 The pass was checked exhaustively against \texttt{std::stable\_sort} for all inputs

@@ -5,7 +5,7 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at
 // https://mozilla.org/MPL/2.0/.
 //
-// sotsort.hpp — SotSort v8-r7 (reconstrucción del 2026-11-17, revisiones r2–r7 hasta el 2026-11-20)
+// sotsort.hpp — SotSort v8-r8 (reconstrucción del 2026-11-17, revisiones r2–r8 hasta el 2026-11-22)
 //
 // El código fuente original de la versión 8 se perdió. Este archivo se
 // reescribió a partir de: el pseudocódigo y las demostraciones de v6.1/v8
@@ -259,6 +259,9 @@ public:
 #endif
 #ifndef SOT_BAD_BUDGET
 #define SOT_BAD_BUDGET 4            // particiones malas toleradas por el quicksort (ver quick)
+#endif
+#ifndef SOT_SORTED_MIN
+#define SOT_SORTED_MIN 1024   // quicksort: tamaño mínimo para mirar si un subrango ya está ordenado
 #endif
 #ifndef SOT_LEAF
 #define SOT_LEAF 128
@@ -1007,15 +1010,17 @@ private:
     }
     // v8-r7: mezcla con galope del camino paginado (como merge_left_buf con mode 2, pero sin
     // cruzar bordes de página): vuelve cuando se acaba la página de X, la de Y o la de salida.
-    // El estado (contadores y si se está galopando) sigue de una página a la siguiente. Los
-    // galopes se cortan en el borde de página; un galope cortado no cuenta como corto.
-    T* merge_page_gallop(T*& x1, T* x2, T*& y1, T* y2, T* o, T* o2, std::size_t& cx, std::size_t& cy, bool& gal) {
+    // El estado (contadores, umbral y si se está galopando) sigue de una página a la siguiente.
+    // Los galopes se cortan en el borde de página; un galope cortado no cuenta como corto.
+    // v8-r8: umbral adaptativo como en Timsort: salir del galope lo sube en 2, cada ronda de
+    // galope larga lo baja en 1 (mínimo MG).
+    T* merge_page_gallop(T*& x1, T* x2, T*& y1, T* y2, T* o, T* o2, std::size_t& cx, std::size_t& cy, bool& gal, std::size_t& mg) {
         T *p = x1, *q = y1;
         while (p < x2 && q < y2 && o < o2) {
             if (!gal) {
                 if (lt(*q, *p)) { *o++ = std::move(*q++); ++cy; cx = 0; }
                 else            { *o++ = std::move(*p++); ++cx; cy = 0; }
-                if (std::max(cx, cy) >= MG) gal = true;
+                if (std::max(cx, cy) >= mg) gal = true;
                 continue;
             }
             const std::size_t lim = std::min(static_cast<std::size_t>(x2 - p), static_cast<std::size_t>(o2 - o));
@@ -1025,7 +1030,8 @@ private:
             const std::size_t lim2 = std::min(static_cast<std::size_t>(y2 - q), static_cast<std::size_t>(o2 - o));
             const std::size_t k2 = detail::gallop(lim2, [&](std::size_t i) { return lt(q[i], *p); });
             o = std::move(q, q + k2, o); q += k2;
-            if (k < MG && k2 < MG && k2 < lim2) { gal = false; cx = cy = 0; }
+            if (k < MG && k2 < MG && k2 < lim2) { gal = false; cx = cy = 0; mg += 2; }
+            else if (mg > MG) --mg;
         }
         x1 = p; y1 = q;
         return o;
@@ -1072,10 +1078,11 @@ private:
             // Sonda de la mezcla sin páginas (8 muestras de X ubicadas en Y; galope si la cota
             // da rachas de 8 o más en promedio), acá para todos los tipos: con runs aleatorios
             // galopar sumaba ~0.15 comparaciones por elemento y la sonda lo apaga.
-            bool gl = adaptive_ && gallop_;
+            const bool gl = adaptive_ && gallop_;
+            bool probe_yes = false;
             {
                 if (gl) {
-                    if (lx + ly < 256) gl = false;
+                    if (lx + ly < 4096) probe_yes = false;     // la sonda (8 búsquedas binarias) no se paga en mezclas chicas
                     else {
                         auto atY = [&](std::size_t t) -> const T& { return base(ys[t / P])[t % P]; };
                         auto atX = [&](std::size_t t) -> const T& { return base(xs[t / P])[t % P]; };
@@ -1090,17 +1097,19 @@ private:
                             sw += 2 * std::min(px - prevx, py - prevy) + 1;
                             prevx = px; prevy = py;
                         }
-                        gl = sw * 8 <= lx + ly;
+                        probe_yes = sw * 8 <= lx + ly;
                     }
                 }
             }
-            std::size_t gcx = 0, gcy = 0; bool gal = true;
+            // Sonda a favor: empieza galopando. En contra: empieza de a uno y galopa solo tras una
+            // racha de mg (la cota de la sonda es floja con muchas claves iguales).
+            std::size_t gcx = 0, gcy = 0, gmg = MG; bool gal = probe_yes;
             while (rx || ry) {
                 if (o1 == o2) { std::uint32_t ph = pop(); pr_tmp_.push_back(ph); o1 = base(ph); o2 = o1 + P; }
                 std::size_t k = static_cast<std::size_t>(o2 - o1);
                 if (rx && ry && gl) {
                     T *xb = x1, *yb = y1;
-                    o1 = merge_page_gallop(x1, x2, y1, y2, o1, o2, gcx, gcy, gal);
+                    o1 = merge_page_gallop(x1, x2, y1, y2, o1, o2, gcx, gcy, gal, gmg);
                     rx -= static_cast<std::size_t>(x1 - xb); ry -= static_cast<std::size_t>(y1 - yb);
                 } else if (rx && ry) {
                     k = std::min(k, std::min(static_cast<std::size_t>(x2 - x1), static_cast<std::size_t>(y2 - y1)));
@@ -1395,33 +1404,111 @@ private:
         if (budget > SOT_BAD_BUDGET) budget = SOT_BAD_BUDGET;
         quick_from(lo, hi, budget, false, T{}, nullptr, 0);
     }
+    // ¿[lo, hi) está en orden no decreciente? Corta en el primer descenso. Si es estrictamente
+    // descendente se invierte (estable) y también devuelve true. *used recibe las comparaciones.
+    bool ascending(std::size_t lo, std::size_t hi, std::size_t* used = nullptr) {
+        std::size_t i = lo + 1;
+        while (i < hi && !lt(a_[i], a_[i - 1])) ++i;
+        std::size_t u = i - lo;
+        bool ok = i >= hi;
+        if (!ok && i == lo + 1) {
+            ++i;
+            while (i < hi && lt(a_[i], a_[i - 1])) ++i;
+            u += i - lo - 1;
+            if (i >= hi) { std::reverse(a_ + lo, a_ + hi); ok = true; }
+        }
+        if (used) *used = u;
+        return ok;
+    }
+    // Elige las vías de una pasada a partir de la muestra ordenada buf_[0, ns) y arma el árbol
+    // implícito en spl (como en IPS4o: nodo i en spl[i-1], hijos 2i y 2i+1; el recorrido en orden
+    // da los separadores ordenados; clasificar es bajar log2 kt niveles con
+    // b = 2b + (separador <= x)). Devuelve kt, las hojas del árbol.
+    //  - Sin iguales (eq = false): kt = k, separadores equidistantes de la muestra.
+    //  - Con grupos de iguales (eq = true; como los de IPS4o): kt <= k/2 hojas y cada separador
+    //    tiene su grupo de iguales entre los rangos vecinos: 2kt-1 grupos, los impares
+    //    terminados. Los separadores en orden quedan en spl[kt-1, 2kt-2).
+    // v8-r8: la muestra se comprime en valores distintos con su cantidad. Para cada kt candidato
+    // (k/2, k/4, ..., 2) los separadores son los valores de las posiciones equidistantes, sin
+    // repetir, y los lugares que sobran van a los valores más frecuentes que falten. Se elige
+    // por un modelo de costo en comparaciones por elemento:
+    //     log2 kt + 1 + u · resto(kt)
+    // con u = fracción de la muestra que no es igual a ningún separador. resto(kt) estima lo que
+    // le falta a un elemento no terminado: log2((D - separadores) / kt) + 2 (al menos 2), con D
+    // los valores distintos estimados del rango, por (1 + 1/log2 k), que cobra los movimientos
+    // de las pasadas que faltan. Sin iguales el costo es log2 k + resto(k) con ningún separador.
+    // Todas las opciones ordenan bien: el modelo solo elige el costo.
+    std::size_t pss_choose(std::size_t ns, std::size_t m, T* spl, bool& eq) {
+        const std::size_t k = pss_k_;
+        std::uint16_t rs[8 * 64 + 1], ord[8 * 64];
+        std::uint8_t sel[8 * 64], bsel[8 * 64];
+        std::size_t nr = 1, f1 = 0, f2 = 0;
+        rs[0] = 0;
+        for (std::size_t i = 1; i < ns; ++i) if (lt(buf_[i - 1], buf_[i])) rs[nr++] = static_cast<std::uint16_t>(i);
+        rs[nr] = static_cast<std::uint16_t>(ns);
+        auto cnt = [&](std::size_t r) { return static_cast<std::size_t>(rs[r + 1] - rs[r]); };
+        for (std::size_t r = 0; r < nr; ++r) { ord[r] = static_cast<std::uint16_t>(r); f1 += cnt(r) == 1; f2 += cnt(r) == 2; }
+        auto lg2 = [](std::size_t x) { int l = 0; while (x > 1) { x >>= 1; ++l; } return l; };
+        const int lgK = lg2(k);
+        std::size_t bkt = 0;
+        if (nr < ns) {
+            std::sort(ord, ord + nr, [&](std::uint16_t x, std::uint16_t y) { return cnt(x) != cnt(y) ? cnt(x) > cnt(y) : x < y; });
+            // D = valores distintos estimados (Chao1: los vistos + f1²/(2·f2), con f1 y f2 los
+            // valores vistos una y dos veces en la muestra), a lo sumo m.
+            const double D = std::min(static_cast<double>(m),
+                                      static_cast<double>(nr) + static_cast<double>(f1) * static_cast<double>(f1) / (2.0 * static_cast<double>(std::max<std::size_t>(f2, 1))));
+            const double fut = 1.0 + 1.0 / lgK;
+            // sel = separadores elegidos; el resto de los valores se reparte en kc rangos
+            auto rest = [&](std::size_t sel_n, std::size_t kc) {
+                const double per = (D - static_cast<double>(sel_n)) / static_cast<double>(kc);
+                return (std::log2(std::max(per, 1.0)) + 2.0) * fut;
+            };
+            double best = lgK + rest(0, k);
+            for (std::size_t kc = k / 2; kc >= 2; kc /= 2) {
+                std::memset(sel, 0, nr);
+                std::size_t have = 0, mass = 0, r = 0;
+                for (std::size_t j = 1; j < kc; ++j) {
+                    const std::size_t pos = j * ns / kc;
+                    while (rs[r + 1] <= pos) ++r;
+                    if (!sel[r]) { sel[r] = 1; ++have; mass += cnt(r); }
+                }
+                for (std::size_t t = 0; t < nr && have < kc - 1; ++t)
+                    if (!sel[ord[t]]) { sel[ord[t]] = 1; ++have; mass += cnt(ord[t]); }
+                const int lg = lg2(kc);
+                const double c = lg + 1 + static_cast<double>(ns - mass) / static_cast<double>(ns) * rest(have, kc);
+                if (c < best) { best = c; bkt = kc; std::memcpy(bsel, sel, nr); }
+            }
+        }
+        eq = bkt != 0;
+        const std::size_t kt = eq ? bkt : k;
+        T* srt = spl + (kt - 1);
+        if (eq) {                                               // separadores elegidos, en orden; relleno con el último
+            std::size_t c = 0;
+            for (std::size_t r = 0; r < nr; ++r) if (bsel[r]) srt[c++] = buf_[rs[r]];
+            for (; c < kt - 1; ++c) srt[c] = srt[c - 1];
+        }
+        std::size_t j = 1;
+        auto fill_tree = [&](auto&& self, std::size_t i) -> void {
+            if (i >= kt) return;
+            self(self, 2 * i);
+            spl[i - 1] = eq ? srt[j - 1] : buf_[j * ns / kt];
+            ++j;
+            self(self, 2 * i + 1);
+        };
+        fill_tree(fill_tree, 1);
+        return kt;
+    }
     void pss_rec(std::size_t lo, std::size_t hi, int depth, int bad) {
         const std::size_t m = hi - lo, k = pss_k_;
         if (m <= B_ || depth > pss_maxdepth_ || bad > 1) { pss_base(lo, hi); return; }
-        // Separadores: muestra de 8k ordenada en el área de páginas. Árbol implícito (como en
-        // IPS4o): nodo i en spl[i-1], hijos 2i y 2i+1; el recorrido en orden da los separadores
-        // ordenados. Clasificar es bajar log2 kt niveles con b = 2b + (separador <= x).
-        // Grupos de iguales (como IPS4o): si dos separadores elegidos son iguales, el árbol baja a
-        // kt = k/2 hojas y cada separador s_{g-1} tiene su grupo de iguales entre los rangos g-1
-        // y g: 2kt-1 grupos, los impares terminados (todos iguales) y sin recursión.
+        // Separadores: muestra de 8k ordenada en el área de páginas; pss_choose arma el árbol.
         T* spl = buf_ + k * pss_P_;
         const std::size_t ns = std::min<std::size_t>(m, 8 * k);
         for (std::size_t i = 0; i < ns; ++i) buf_[i] = a_[lo + static_cast<std::size_t>(rnd() % m)];
         std::sort(buf_, buf_ + ns, [&](const T& x, const T& y) { return lt(x, y); });
         bool eq = false;
-        for (std::size_t j = 1; j + 1 < k && !eq; ++j)
-            eq = !lt(buf_[j * ns / k], buf_[(j + 1) * ns / k]);
-        const std::size_t kt = eq ? k / 2 : k;
+        const std::size_t kt = pss_choose(ns, m, spl, eq);
         const T* srt = spl + (kt - 1);                          // separadores en orden (solo con eq)
-        { std::size_t j = 1;
-          auto fill_tree = [&](auto&& self, std::size_t i) -> void {
-              if (i >= kt) return;
-              self(self, 2 * i);
-              spl[i - 1] = buf_[j * ns / kt]; ++j;
-              self(self, 2 * i + 1);
-          };
-          fill_tree(fill_tree, 1);
-          if (eq) for (std::size_t i = 1; i < kt; ++i) spl[kt - 1 + i - 1] = buf_[i * ns / kt]; }
         const std::size_t ng = eq ? 2 * kt - 1 : kt;
         std::size_t start[65];
         pss_distribute(lo, m, spl, start, kt, eq ? srt : nullptr);
@@ -1433,7 +1520,11 @@ private:
             const std::size_t len = start[j + 1] - start[j];
             if (eq && (j & 1)) { if (len == m) return; continue; } // grupo de iguales: terminado
             if (len == m) { pss_base(lo, hi); return; }          // sin progreso
-            if (len > 1) pss_rec(lo + start[j], lo + start[j + 1], depth + 1, len > m / 2 ? nbad : 0);
+            // v8-r8: un rango que ya quedó ordenado (p. ej. secuencias ordenadas intercaladas:
+            // la distribución estable las separa) no se recursa. Con salida temprana: en un
+            // rango desordenado cuesta ~2 comparaciones, y hay a lo sumo k rangos por pasada.
+            if (len > 1 && !ascending(lo + start[j], lo + start[j + 1]))
+                pss_rec(lo + start[j], lo + start[j + 1], depth + 1, len > m / 2 ? nbad : 0);
         }
     }
     // kt hojas del árbol; srt != nullptr activa los grupos de iguales (2kt-1 grupos).
@@ -1601,6 +1692,9 @@ private:
         if (has0) st[sp].lb = lb0;
         ++sp;
         T lb{};
+        bool fresh = false;
+        std::size_t waste = 0;
+        const std::size_t wcap = (hi0 - lo0) / 4;
         while (sp) {
             --sp;
             std::size_t lo = st[sp].lo, hi = st[sp].hi;
@@ -1612,6 +1706,16 @@ private:
                 if (aux_base_) { buf_ = aux_base_ + lo; B_ = len; }
                 if (len <= LEAF) { leaf_sort(lo, hi); break; }
                 if (bad <= 0) { if (!already_sorted(lo, hi)) merge_sort(lo, hi); break; }
+                // v8-r8: un subrango que la partición estable dejó ordenado se da por terminado.
+                // Solo rangos de SOT_SORTED_MIN o más que salieron de una partición (el inicial ya
+                // se miró antes de llegar acá), y las comparaciones gastadas en chequeos fallidos
+                // se cortan en un cuarto del rango inicial.
+                if (fresh && len >= SOT_SORTED_MIN && waste < wcap) {
+                    std::size_t used = 0;
+                    if (ascending(lo, hi, &used)) break;
+                    waste += used;
+                }
+                fresh = true;
                 T piv = pivot_value(lo, len);
                 bool none_less = has && !lt(lb, piv);          // el pivote no supera la cota inferior
                 std::size_t mid = lo;

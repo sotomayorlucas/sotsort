@@ -476,3 +476,42 @@ asc1pct 16.76 / 19.21 → 4.74 / 19.21; tail10 3.99 → 4.12; el resto igual. Si
 9.74 (VM-PS 9.72); 10000: 6.78 → 6.74; las demás iguales; asignaciones iguales en todas.
 Tests: suite completa, `make sanitize`, y `logsort_counts.cpp` con ASan/UBSan en n = 2·10^5 y 10^6
 (9 distribuciones, salida ordenada y estable).
+
+## 2n. v8-r8: vías según la muestra, subrangos ya ordenados, galope adaptativo (22 nov 2026)
+
+Tres cambios, para las debilidades que quedaban en 2k–2m.
+
+1. **Separadores y vías según la muestra** (`pss_choose`). La muestra ordenada se comprime en
+   valores distintos con su cantidad. Para cada kt en {k/2, ..., 2}: separadores = valores de las
+   posiciones equidistantes, sin repetir; los lugares que sobran, a los valores más frecuentes
+   que falten (si no alcanzan los valores, se repite el último: quedan rangos vacíos). Costo
+   estimado por elemento: log2 kt + 1 + u·resto, con u = fracción de la muestra que no es
+   separador y resto = (log2 max(1, (D − separadores)/kt) + 2)·(1 + 1/log2 k); D = valores
+   distintos estimados con Chao1 (vistos + f1²/(2·f2)). Sin iguales: log2 k + resto con cero
+   separadores. Gana el menor. Es una heurística: todas las opciones ordenan bien. Dos versiones
+   previas del modelo (R = log2 de los valores vistos; R = log2 m si la muestra no satura)
+   empeoraban sqrtn (13.5–13.8 comparaciones contra 12.9 de r7) y se descartaron.
+2. **Subrangos ya ordenados** (`ascending`): tras cada pasada paginada, un rango en orden no
+   decreciente no se recursa, y uno estrictamente descendente se invierte. En el quicksort, lo
+   mismo para subrangos de SOT_SORTED_MIN = 1024 o más que salen de una partición; las
+   comparaciones de chequeos fallidos se cortan en un cuarto del rango inicial de la llamada.
+3. **Galope adaptativo en la mezcla paginada**: si la sonda dice que no (o la mezcla tiene menos
+   de 4096 elementos y la sonda no se paga), la mezcla empieza de a uno y galopa tras una racha
+   de mg (umbral estilo Timsort: +2 al salir del galope, −1 por ronda larga). La cota de la sonda
+   es floja con muchas claves iguales (dientes de sierra: 18.27 → 6.73 comparaciones).
+
+Conteos (16 bytes, n = 10^7, presupuesto VM, cmp / mov; r7 → r8): zipf 7.09 / 4.36 → 5.28 / 4.70;
+dup16 6.00 / 3.94 → 5.00 / 3.94; sqrtn 12.91 / 9.02 → 12.56 / 8.37; interl 20.72 / 18.27 →
+7.14 / 4.06; runs63 7.13 → 5.45; asc1pct 4.74 → 4.38; aleatoria igual (22.94 / 22.94). Modo O(1):
+interl 20.68 / 35.45 → 12.03 / 24.62; zipf 4.94 → 4.35; dup16 5.19 → 5.00 (rangos de iguales
+cuentan como ordenados). Más entradas en `bench/cost/extra_dists_1e7.txt` (r7 y r8): tres
+secuencias intercaladas 20.74 / 18.31 → 7.29 / 4.15; descendentes intercaladas 20.24 / 23.10 →
+7.12 / 5.56; 90% un valor 7.80 → 3.96; dos valores 6.00 → 3.00. Empeora en movimientos:
+40% un valor + distintos 16.80 / 15.90 → 15.48 / 18.20; mitad un valor 14.99 / 13.73 → 12.97 / 14.64.
+Harness de VM-Powersort (int, n ≤ 10^6, `bench/vmpowersort/results-r8`), comparaciones/10^6:
+S = 2: 18.323 (r6 18.319); 100: 13.120 (r6 13.087, r7 13.176); 1000: 9.707 (VM-PS 9.718);
+10000: 6.746; 10^5: 3.794; 10^6: 1.613 (VM-PS 1.608). Asignaciones idénticas a r6.
+Adversario de McIlroy contra SotSort (n = 10^6): 26.05 / 35.22 (antes 26.13 / 35.46).
+Tests: suite, `make sanitize`, `test_pss` con ASan/UBSan, y `logsort_counts` y `extra_dists`
+con ASan/UBSan en n = 10^6 (19 distribuciones, salida ordenada y estable).
+No hecho: un adversario contra el modelo de costo de `pss_choose`.

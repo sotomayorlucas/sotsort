@@ -22,9 +22,10 @@ sot::stable_sort(v.data(), v.size(), [](const Record& a, const Record& b) { retu
 
 ## Status — read this first
 
-This is version 8-r7. The technical report (`docs/sotsort_report.pdf`, revision 6; arXiv:2611.24786
+This is version 8-r8. The technical report (`docs/sotsort_report.pdf`, revision 6; arXiv:2611.24786
 has earlier revisions) describes it. Commits: `c16d43f` (8-r), `b9e0df1` (8-r5), `ef55874` (8-r6); 8-r7 adds
-equality groups to the paged samplesort and galloping to the paged run merge.
+equality groups to the paged samplesort and galloping to the paged run merge; 8-r8 chooses the
+samplesort's splitters and fan-out from the sample and skips subranges that are already sorted.
 Development history and design notes (Spanish): `docs/RECONSTRUCCION.md`; the paged partition and
 samplesort, with proofs, tests and prior art: `docs/IDEA_particion_paginada.md`.
 
@@ -89,15 +90,16 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
 - The paged samplesort only runs with a bounded block buffer; in O(1) mode its page tables would not
   fit, so the quicksort runs. Its worst case is bounded by O(n log n) but measured, not proved tight.
 - Against Logsort (operation counts only, `bench/cost/logsort_counts.cpp`, same element type and
-  memory): with a 16 KB buffer Logsort makes fewer moves than SotSort on random input at n = 10^7
-  (99 vs 112 per element) and with many equal keys; with VM-Powersort's budget, on the inputs where the
-  paged samplesort runs (random, 16 keys, √n keys, Zipf), SotSort makes 3–7 times fewer moves
-  (16 distinct keys: 6.00 / 3.94 comparisons / moves against 6.13 / 28.43). Timings against Logsort are not measured.
-- Skewed keys (Zipf-like) with a bounded buffer: 7.1 comparisons per element against 4.9 without
-  the paged samplesort and 5.7 for Logsort (n = 10^7); moves are 4.4 against 21.5 and 24.5.
+  memory, n = 10^7): with a 16 KB buffer Logsort makes fewer moves than SotSort on random input
+  (99 vs 112 per element) and with many equal keys (31 vs 46 with 16 distinct keys); with
+  VM-Powersort's budget SotSort makes 3–13 times fewer moves on the inputs that reach the paged
+  samplesort, and no more comparisons. Timings against Logsort are not measured.
 - With a bounded buffer, nearly sorted inputs with sparse disorder (1 in 63 or 1% of elements out of
-  place) make 7.1 and 4.7 comparisons per element at n = 10^7 (17.7 and 16.8 before 8-r7, when the
-  paged run merge did not gallop), against about 2 in O(1) mode, which pays 31–36 moves instead of 20.
+  place) make 5.5 and 4.4 comparisons per element at n = 10^7 (17.7 and 16.8 before 8-r7), against
+  about 2 in O(1) mode, which pays 31–36 moves instead of 20.
+- Skewed keys with a bounded buffer (Zipf-like): 5.3 comparisons per element against 4.4 in O(1)
+  mode (which pays 40 moves instead of 4.7). The samplesort's choice of splitters and fan-out is
+  a cost model on the sample (heuristic); no adversary was built against it.
 
 ## Layout
 
