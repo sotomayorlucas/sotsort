@@ -5,7 +5,7 @@
 // If a copy of the MPL was not distributed with this file, You can obtain one at
 // https://mozilla.org/MPL/2.0/.
 //
-// sotsort.hpp — SotSort v8-r8 (reconstrucción del 2026-11-17, revisiones r2–r8 hasta el 2026-11-22)
+// sotsort.hpp — SotSort v8-r9 (reconstrucción del 2026-11-17, revisiones r2–r9 hasta el 2026-11-24)
 //
 // El código fuente original de la versión 8 se perdió. Este archivo se
 // reescribió a partir de: el pseudocódigo y las demostraciones de v6.1/v8
@@ -1008,21 +1008,13 @@ private:
         x1 = x; y1 = y;
         return o1;
     }
-    // v8-r7: mezcla con galope del camino paginado (como merge_left_buf con mode 2, pero sin
-    // cruzar bordes de página): vuelve cuando se acaba la página de X, la de Y o la de salida.
-    // El estado (contadores, umbral y si se está galopando) sigue de una página a la siguiente.
-    // Los galopes se cortan en el borde de página; un galope cortado no cuenta como corto.
-    // v8-r8: umbral adaptativo como en Timsort: salir del galope lo sube en 2, cada ronda de
-    // galope larga lo baja en 1 (mínimo MG).
-    T* merge_page_gallop(T*& x1, T* x2, T*& y1, T* y2, T* o, T* o2, std::size_t& cx, std::size_t& cy, bool& gal, std::size_t& mg) {
+    // v8-r7: tramo con galope de la mezcla del camino paginado (como merge_left_buf con mode 2,
+    // pero sin cruzar bordes de página). Vuelve cuando se acaba la página de X, la de Y o la de
+    // salida, o cuando los galopes salen cortos (gal = false: sigue la mezcla de a uno). Un
+    // galope cortado por el borde de página no cuenta como corto.
+    T* merge_page_gallop(T*& x1, T* x2, T*& y1, T* y2, T* o, T* o2, bool& gal) {
         T *p = x1, *q = y1;
         while (p < x2 && q < y2 && o < o2) {
-            if (!gal) {
-                if (lt(*q, *p)) { *o++ = std::move(*q++); ++cy; cx = 0; }
-                else            { *o++ = std::move(*p++); ++cx; cy = 0; }
-                if (std::max(cx, cy) >= mg) gal = true;
-                continue;
-            }
             const std::size_t lim = std::min(static_cast<std::size_t>(x2 - p), static_cast<std::size_t>(o2 - o));
             const std::size_t k = detail::gallop(lim, [&](std::size_t i) { return !lt(*q, p[i]); });
             o = std::move(p, p + k, o); p += k;
@@ -1030,8 +1022,7 @@ private:
             const std::size_t lim2 = std::min(static_cast<std::size_t>(y2 - q), static_cast<std::size_t>(o2 - o));
             const std::size_t k2 = detail::gallop(lim2, [&](std::size_t i) { return lt(q[i], *p); });
             o = std::move(q, q + k2, o); q += k2;
-            if (k < MG && k2 < MG && k2 < lim2) { gal = false; cx = cy = 0; mg += 2; }
-            else if (mg > MG) --mg;
+            if (k < MG && k2 < MG && k2 < lim2) { gal = false; break; }
         }
         x1 = p; y1 = q;
         return o;
@@ -1101,21 +1092,30 @@ private:
                     }
                 }
             }
-            // Sonda a favor: empieza galopando. En contra: empieza de a uno y galopa solo tras una
-            // racha de mg (la cota de la sonda es floja con muchas claves iguales).
-            std::size_t gcx = 0, gcy = 0, gmg = MG; bool gal = probe_yes;
+            // Sonda a favor: empieza galopando. En contra (la cota de la sonda es floja con muchas
+            // claves iguales): mezcla de a uno con el lazo sin galope; si en un tramo de GCH salidas
+            // casi todo sale de un mismo lado, pasa a galopar. v8-r9: el lazo de a uno
+            // con contadores de racha de r8 costaba 13–53% de tiempo con runs aleatorios (S = 100).
+            // Los tramos de detección se alternan con tramos largos (hasta GBIG salidas) sin mirar:
+            // tramos de 16 todo el tiempo costaban ~10% de tiempo en int.
+            constexpr std::size_t GCH = 16, GSK = 2, GBIG = 240;
+            bool gal = probe_yes, gdet = true;
             while (rx || ry) {
                 if (o1 == o2) { std::uint32_t ph = pop(); pr_tmp_.push_back(ph); o1 = base(ph); o2 = o1 + P; }
                 std::size_t k = static_cast<std::size_t>(o2 - o1);
-                if (rx && ry && gl) {
+                if (rx && ry && gl && gal) {
                     T *xb = x1, *yb = y1;
-                    o1 = merge_page_gallop(x1, x2, y1, y2, o1, o2, gcx, gcy, gal, gmg);
+                    o1 = merge_page_gallop(x1, x2, y1, y2, o1, o2, gal); gdet = true;
                     rx -= static_cast<std::size_t>(x1 - xb); ry -= static_cast<std::size_t>(y1 - yb);
                 } else if (rx && ry) {
                     k = std::min(k, std::min(static_cast<std::size_t>(x2 - x1), static_cast<std::size_t>(y2 - y1)));
+                    if (gl) k = std::min(k, gdet ? GCH : GBIG);
                     T *xb = x1, *yb = y1;
                     o1 = merge_run_k(x1, y1, o1, k);
-                    rx -= static_cast<std::size_t>(x1 - xb); ry -= static_cast<std::size_t>(y1 - yb);
+                    const std::size_t dx = static_cast<std::size_t>(x1 - xb);
+                    if (gl && gdet && k == GCH && (dx <= GSK || dx >= GCH - GSK)) gal = true;
+                    gdet = !gdet;
+                    rx -= dx; ry -= static_cast<std::size_t>(y1 - yb);
                 } else if (rx) {
                     k = std::min(k, static_cast<std::size_t>(x2 - x1));
                     o1 = std::move(x1, x1 + k, o1); x1 += k; rx -= k;

@@ -149,7 +149,7 @@ The base case tolerates at most $4$ bad partitions per path before its merge
 fallback (it previously tolerated $\lg n$). Hence the worst case stays
 $O(n\log n)$ comparisons and moves; the constant is measured below, not proved tight.
 
-In SotSort (version 8-r8) the pass is used only with a bounded block buffer
+In SotSort (version 8-r9) the pass is used only with a bounded block buffer
 ($2B<n$), for $k\in\{64,32,16,8\}$, the largest with $P\ge64$ and tables within
 the plan's table reserve. Every byte is charged to the same budget as the rest
 of the sort.
@@ -258,9 +258,11 @@ the sort on 81 adversarial families and on 112-byte types and \texttt{std::strin
 under ASan, UBSan and TSan.
 
 \paragraph{Time.}
-Indicative only, ratio to VM-Powersort at $S=2$ on two machines (cloud / desktop):
-\texttt{int} 0.72 / 0.78, \texttt{ptr} 0.82 / 0.86, \texttt{fastarr} 0.73 / 0.73,
-\texttt{arr} 0.55 / 0.57. Repeated runs vary by about $\pm10$--$15\%$.
+Indicative only. Ratio to VM-Powersort, version 8-r9, $n=10^6$, one cloud machine, mean of two
+runs with the order of the algorithms swapped: at $S=2$, \texttt{int} 0.75, \texttt{ptr} 0.73,
+\texttt{fastarr} 0.74, \texttt{arr} 0.53; at $S=100$, 0.93, 0.74, 0.84, 0.84; at $S=10^6$,
+0.71, 1.00, 0.57, 0.78. The two orders differ by up to about $8\%$. A second machine was
+measured only for 8-r6 ($S=2$: 0.78, 0.86, 0.73, 0.57).
 
 \section{Prior work}
 

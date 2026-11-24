@@ -22,10 +22,11 @@ sot::stable_sort(v.data(), v.size(), [](const Record& a, const Record& b) { retu
 
 ## Status — read this first
 
-This is version 8-r8. The technical report (`docs/sotsort_report.pdf`, revision 6; arXiv:2611.24786
+This is version 8-r9. The technical report (`docs/sotsort_report.pdf`, revision 6; arXiv:2611.24786
 has earlier revisions) describes it. Commits: `c16d43f` (8-r), `b9e0df1` (8-r5), `ef55874` (8-r6); 8-r7 adds
 equality groups to the paged samplesort and galloping to the paged run merge; 8-r8 chooses the
-samplesort's splitters and fan-out from the sample and skips subranges that are already sorted.
+samplesort's splitters and fan-out from the sample and skips subranges that are already sorted;
+8-r9 removes a time regression of 8-r8 in the paged run merge (13–53% at S = 100).
 Development history and design notes (Spanish): `docs/RECONSTRUCCION.md`; the paged partition and
 samplesort, with proofs, tests and prior art: `docs/IDEA_particion_paginada.md`.
 
@@ -95,7 +96,7 @@ Time ratio SotSort (O(1) mode) / blitsort — below 1 means SotSort is faster:
   VM-Powersort's budget SotSort makes 3–13 times fewer moves on the inputs that reach the paged
   samplesort, and no more comparisons. Timings against Logsort are not measured.
 - With a bounded buffer, nearly sorted inputs with sparse disorder (1 in 63 or 1% of elements out of
-  place) make 5.5 and 4.4 comparisons per element at n = 10^7 (17.7 and 16.8 before 8-r7), against
+  place) make 5.6 and 4.5 comparisons per element at n = 10^7 (17.7 and 16.8 before 8-r7), against
   about 2 in O(1) mode, which pays 31–36 moves instead of 20.
 - Skewed keys with a bounded buffer (Zipf-like): 5.3 comparisons per element against 4.4 in O(1)
   mode (which pays 40 moves instead of 4.7). The samplesort's choice of splitters and fan-out is

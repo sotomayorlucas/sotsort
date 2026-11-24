@@ -515,3 +515,23 @@ Adversario de McIlroy contra SotSort (n = 10^6): 26.05 / 35.22 (antes 26.13 / 35
 Tests: suite, `make sanitize`, `test_pss` con ASan/UBSan, y `logsort_counts` y `extra_dists`
 con ASan/UBSan en n = 10^6 (19 distribuciones, salida ordenada y estable).
 No hecho: un adversario contra el modelo de costo de `pss_choose`.
+
+## 2o. v8-r9: tiempos de r8 y regresión corregida (24 nov 2026)
+
+Tiempos A/B en el mismo binario, ambos órdenes (`bench/vmpowersort/ab_r8.sh`, resumen con
+`ab_summary.py`; nube, 2 núcleos, n = 10^6, 10 iteraciones; sot6vm = r6 con búsqueda binaria).
+**r8 tenía una regresión de tiempo con runs aleatorios:** S = 100, r8/r6 = 1.23 (int), 1.53 (ptr),
+1.13 (fastarr), 1.40 (arr), y quedaba arriba de VM-Powersort en int (1.05). Causa: el lazo de a uno
+con contadores de racha (galope adaptativo de 2n) es más lento que `merge_run_k`. Los conteos no
+lo mostraban (13.12 contra 13.09 comparaciones).
+Arreglo: sin sonda a favor, la mezcla usa `merge_run_k`; alterna un tramo de detección de 16
+salidas con tramos de hasta 240 sin mirar, y pasa a galopar si en el tramo de 16 salen 14 o más de
+un mismo lado; vuelve cuando los galopes salen cortos. (Tramos de 16 siempre: todavía +13% en int.)
+Tiempos r9, razón contra VM-Powersort (r6 al lado), media de los dos órdenes:
+S = 2: int 0.75 (1.03), ptr 0.73 (0.80), fastarr 0.74 (0.91), arr 0.53 (0.61);
+S = 100: int 0.93 (0.87), ptr 0.74 (0.69), fastarr 0.84 (0.85), arr 0.84 (0.84);
+S = 10^6: int 0.71 (0.70), ptr 1.00 (1.02), fastarr 0.57 (0.60), arr 0.78 (0.80).
+En S = 100 quedan +6–7% en int y ptr respecto de r6, dentro de la variación entre órdenes (±5–8%).
+Conteos r9 (`results-r9`): comparaciones S = 100: 13.112; 1000: 9.713 (VM-PS 9.718); 10000: 6.747;
+asignaciones idénticas a r6. runs63 5.62, asc1pct 4.54, dientes de sierra 6.74 (r8: 5.45, 4.38, 6.73).
+La PC no estaba conectada: los tiempos de la segunda máquina siguen siendo los de r6.
